@@ -1,5 +1,5 @@
 # DAS Whale Calls - Workflow
-This project provides scripts to test the Multispectral Representation of DAS data (MsR-DAS) methods described in:
+This project provides scripts to test the End-to-End Workflow for Fin Whale Song Detection, Note Characterization, and Localization described in:
 
 Diego-Tortosa, D.; Romagosa, M.; Ugalde, A.; Latorre, H.; Ventosa, S.; García, J.E.; Villaseñor, A. (2026) **An End-to-End Workflow for Fin Whale Song Detection, Note Characterization, and Localization with Distributed Acoustic Sensing**. ArXiv: [URL]
 
