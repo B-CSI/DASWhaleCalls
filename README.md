@@ -31,3 +31,15 @@ pip install -r requirements.txt
 
 An example workflow is implemented in `DASWhaleCalls_example.ipyn`. 
 This notebook serves as the main entry point of the project and some functionalities in a reproducible step-by-step manner.
+
+
+
+## Contributing & License Expectations
+
+Licensed under **AGPL-3.0**.
+
+**✅ Feel free to** fork, use, modify, redistribute, and deploy this project (including commercially).
+
+**🚫 If you distribute or deploy modified versions**, you must comply with the AGPL-3.0 by making the corresponding source code available and preserving the license and copyright notices.
+
+Thank you for helping keep this project open, transparent, and beneficial for everyone.
