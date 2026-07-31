@@ -4,10 +4,11 @@ import os
 # %% Defined params
 # gral. params:
 dist_ch = 10        # [m]
+fs = 100 # [Hz]
 FontSize = 16
 output_results = "./results"
 # DBSCAN:
-c_ref = 1500        # [m/s]
+c_sound = 1500        # [m/s]
 eps_m = 500         # [m]
 min_pts = 5
 # Cluster merged:
@@ -21,6 +22,15 @@ fit_grid_size = 500
 early_time_weight = 20
 early_time_weight_power = 10
 refit_time_threshold = 0.3
+# Positioning note:
+dx_res = 25
+dy_res = 25
+minX = -3e3
+maxX = 3e3
+minY = -3e3
+maxY = 3e3
+n_sigma_terr = 1
+minNpts_HyperBranch = 3
 
 # %% Derivated params and others
 TITLE_SIZE = FontSize 
