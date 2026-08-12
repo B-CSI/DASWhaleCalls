@@ -1,7 +1,8 @@
 # DAS Whale Calls - Workflow
 This project provides scripts to test the End-to-End Workflow for Fin Whale Song Detection, Note Characterization, and Localization described in:
 
-Diego-Tortosa, D.; Romagosa, M.; Ugalde, A.; Latorre, H.; Ventosa, S.; García, J.E.; Villaseñor, A. (2026) **An End-to-End Workflow for Fin Whale Song Detection, Note Characterization, and Localization with Distributed Acoustic Sensing**. ArXiv: [URL]
+Diego-Tortosa, D.; Romagosa, M.; Ugalde, A.; Latorre, H.; Ventosa, S.; García, J.E.; Villaseñor, A. (2026) **An End-to-End Workflow for Fin Whale Song Detection, Note Characterization, and Localization with Distributed Acoustic Sensing**. [arXiv:2608.02387](https://doi.org/10.48550/arXiv.2608.02387)
+
 
 If you use this repository in your research, a citation to the manuscript would be appreciated.
 
