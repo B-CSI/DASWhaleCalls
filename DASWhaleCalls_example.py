@@ -18,11 +18,13 @@ from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import pdist
 from sklearn.cluster import DBSCAN
 from dataclasses import asdict
+from tqdm import tqdm
+
 
 from config.parameters import *
 
 # %% CSVfile reading:
-CSVfile = r"data_test\20240113_kvp_raw_picks.csv"
+CSVfile = "data_test/20240113_kvp_raw_picks.csv"
 CSVfile_raw_data = pd.read_csv(CSVfile, sep=";", comment="#")
 
 print(f"CSVfile_raw_data: {len(CSVfile_raw_data)} samples in {str(dt.timedelta(seconds=float(np.max(CSVfile_raw_data['time_rel']) - np.min(CSVfile_raw_data['time_rel'])))).split('.')[0]} ({len(CSVfile_raw_data)/(np.max(CSVfile_raw_data['time_rel']) - np.min(CSVfile_raw_data['time_rel'])):.1f}/s)")
@@ -62,7 +64,7 @@ fig.savefig(os.path.join(output_results,f"{FigName}.png"),dpi=300,bbox_inches="t
 plt.close(fig)
 
 # %% Spatio-temporal clustering and hyperbolic fitting of KVP picks
-# %% DBSCAN application:
+# DBSCAN application:
 from scripts.kvp_clustering import run_dbscan
 
 x_prima = c_sound * x #[m]
@@ -500,7 +502,7 @@ plt.close(fig)
 # # Coordinates are expressed in a local Cartesian reference system.
 
 # %% Cable coordinates:
-CSVfile_cable = r"data_test\cable_geometry.csv"
+CSVfile_cable = "data_test/cable_geometry.csv"
 CSVfile_cable_data = pd.read_csv(CSVfile_cable, sep=";", comment="#") 
 
 # fig, axes = plt.subplots(1, 2, figsize=(12, 5))

@@ -2,6 +2,12 @@
 __pycache__/
 *.py[cod]
 
+# pyenv
+.python-version
+
+#opnecode files
+AGENTS.md
+
 # Virtual environments
 .venv/
 venv/
