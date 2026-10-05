@@ -1,12 +1,15 @@
+# %% Libraries
 import numpy as np
 import pandas as pd
 from sklearn.cluster import DBSCAN
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import pdist
 from dataclasses import dataclass
+import datetime as dt
 
 # %% run_dbscan function:
 def run_dbscan(x, y, dist_eps, min_pts):
@@ -30,30 +33,35 @@ def run_dbscan(x, y, dist_eps, min_pts):
     n_noise : int
         Number of points classified as noise.
     """
+
     X = np.column_stack((x, y))
 
-    dbscan = DBSCAN(eps=dist_eps, min_samples=min_pts)
+    dbscan = DBSCAN(
+        eps=dist_eps,
+        min_samples=min_pts
+    )
+
     labels = dbscan.fit_predict(X)
 
     unique_labels = set(labels)
+
     n_clusters = len(unique_labels - {-1})
     n_noise = np.count_nonzero(labels == -1)
 
     rows = []
-    cluster_id = -1
 
     for label in unique_labels:
+
         if label == -1:
             continue  # Skip noise
 
-        cluster_id += 1
         mask = labels == label
 
         x_cluster = X[mask, 0]
         y_cluster = X[mask, 1]
 
         rows.append([
-            cluster_id,
+            label,
             len(x_cluster),
             np.min(x_cluster),
             np.min(y_cluster),
@@ -63,85 +71,65 @@ def run_dbscan(x, y, dist_eps, min_pts):
 
     dbscan_df = pd.DataFrame(
         rows,
-        columns=['cluster_id', 'Npts', 'x0', 'y0', 'Xsize', 'Ysize']
+        columns=[
+            'cluster_id',
+            'Npts',
+            'x0',
+            'y0',
+            'Xsize',
+            'Ysize'
+        ]
+    )
+
+    # ------------------------------------------------------------
+    # Sort chronologically and reassign cluster IDs
+    # ------------------------------------------------------------
+
+    dbscan_df = (
+        dbscan_df
+        .sort_values("x0")
+        .reset_index(drop=True)
+    )
+
+    dbscan_df["cluster_id"] = np.arange(
+        len(dbscan_df)
     )
 
     return dbscan_df, n_noise
 
 # %% merge_dbscan_clusters function:
-def merge_dbscan_clusters(dbscan_df, x_dist=0, y_dist=0):
+def merge_dbscan_clusters(
+    dbscan_df,
+    x_dist=2.0,       # [s]
+    y_dist=5000.0,    # [m]
+):
     """
-    Merge nearby DBSCAN clusters based on the distance between their
-    bounding boxes.
+    Merge DBSCAN bounding boxes.
 
-    Two clusters are merged when the horizontal and vertical gaps between
-    their bounding boxes are smaller than the specified thresholds.
+    X = time [s]
+    Y = distance/channel [m]
 
-    Parameters
-    ----------
-    dbscan_df : pandas.DataFrame
-        DBSCAN cluster summary. Must contain the columns:
-        ['x0', 'y0', 'Xsize', 'Ysize'].
-    x_dist : float
-        Maximum horizontal separation between bounding boxes.
-    y_dist : float
-        Maximum vertical separation between bounding boxes.
-   
-    Returns
-    -------
-    pandas.DataFrame
-        Merged cluster summary with columns:
-        ['cluster_id', 'xmin', 'ymin', 'xmax', 'ymax',
-         'x0', 'y0', 'Xsize', 'Ysize', 'Npts'].
+    Two DBSCAN bounding boxes are connected when the gap between
+    their temporal intervals is <= x_dist AND the gap between
+    their spatial intervals is <= y_dist.
+
+    Connected components are then merged transitively.
     """
 
-    # ------------------------------------------------------------------
-    # Build bounding boxes
-    # ------------------------------------------------------------------
-    clusters = dbscan_df.copy()
+    df = dbscan_df.copy().reset_index(drop=True)
 
-    clusters["xmin"] = clusters["x0"]
-    clusters["xmax"] = clusters["x0"] + clusters["Xsize"]
-    clusters["ymin"] = clusters["y0"]
-    clusters["ymax"] = clusters["y0"] + clusters["Ysize"]
+    # Original bounding boxes
+    df["xmin"] = df["x0"]
+    df["xmax"] = df["x0"] + df["Xsize"]
 
-    def rectangle_distance(box1, box2):
-        xmin1, xmax1, ymin1, ymax1 = box1
-        xmin2, xmax2, ymin2, ymax2 = box2
+    df["ymin"] = df["y0"]
+    df["ymax"] = df["y0"] + df["Ysize"]
 
-        dx = max(0, max(xmin2 - xmax1, xmin1 - xmax2))
-        dy = max(0, max(ymin2 - ymax1, ymin1 - ymax2))
+    # ------------------------------------------------------------
+    # Union-Find
+    # ------------------------------------------------------------
 
-        return max(dx / x_dist, dy / y_dist)
-
-    boxes = clusters[["xmin", "xmax", "ymin", "ymax"]].to_numpy()
-
-    # ------------------------------------------------------------------
-    # First merge using hierarchical clustering
-    # ------------------------------------------------------------------
-    distances = pdist(boxes, metric=rectangle_distance)
-    linkage_matrix = linkage(distances, method="complete")
-    clusters["cluster_id"] = fcluster(
-        linkage_matrix,
-        t=1,
-        criterion="distance"
-    )
-
-    dbscan_merged_df = (
-        clusters
-        .groupby("cluster_id", as_index=False)
-        .agg({
-            "xmin": "min",
-            "ymin": "min",
-            "xmax": "max",
-            "ymax": "max"
-        })
-    )
-
-    # ------------------------------------------------------------------
-    # Second merge to guarantee transitive connections
-    # ------------------------------------------------------------------
-    parent = np.arange(len(dbscan_merged_df))
+    parent = np.arange(len(df))
 
     def find(i):
         while parent[i] != i:
@@ -150,57 +138,108 @@ def merge_dbscan_clusters(dbscan_df, x_dist=0, y_dist=0):
         return i
 
     def union(i, j):
-        ri, rj = find(i), find(j)
+        ri = find(i)
+        rj = find(j)
+
         if ri != rj:
             parent[rj] = ri
 
-    for i in range(len(dbscan_merged_df)):
-        for j in range(i + 1, len(dbscan_merged_df)):
+    # ------------------------------------------------------------
+    # Pairwise BB comparison
+    # ------------------------------------------------------------
 
+    for i in range(len(df)):
+
+        for j in range(i + 1, len(df)):
+
+            # Temporal gap [s]
             dx = max(
-                0,
-                max(
-                    dbscan_merged_df.loc[j, "xmin"] - dbscan_merged_df.loc[i, "xmax"],
-                    dbscan_merged_df.loc[i, "xmin"] - dbscan_merged_df.loc[j, "xmax"],
-                ),
+                0.0,
+                df.loc[j, "xmin"] - df.loc[i, "xmax"],
+                df.loc[i, "xmin"] - df.loc[j, "xmax"],
             )
 
+            # Spatial gap [m]
             dy = max(
-                0,
-                max(
-                    dbscan_merged_df.loc[j, "ymin"] - dbscan_merged_df.loc[i, "ymax"],
-                    dbscan_merged_df.loc[i, "ymin"] - dbscan_merged_df.loc[j, "ymax"],
-                ),
+                0.0,
+                df.loc[j, "ymin"] - df.loc[i, "ymax"],
+                df.loc[i, "ymin"] - df.loc[j, "ymax"],
             )
 
+            # Connect boxes
             if dx <= x_dist and dy <= y_dist:
                 union(i, j)
 
-    dbscan_merged_df["cluster_id"] = [find(i) for i in range(len(dbscan_merged_df))]
+    # ------------------------------------------------------------
+    # Connected components
+    # ------------------------------------------------------------
 
-    dbscan_merged_df = (
-        dbscan_merged_df
-        .groupby("cluster_id", as_index=False)
-        .agg({
-            "xmin": "min",
-            "ymin": "min",
-            "xmax": "max",
-            "ymax": "max"
-        })
+    df["_merged_id"] = [
+        find(i)
+        for i in range(len(df))
+    ]
+
+    # ------------------------------------------------------------
+    # Merge boxes
+    # ------------------------------------------------------------
+
+    merged = (
+        df
+        .groupby("_merged_id")
+        .agg(
+            Npts=("Npts", "sum"),
+            x0=("xmin", "min"),
+            xmax=("xmax", "max"),
+            y0=("ymin", "min"),
+            ymax=("ymax", "max"),
+            source_clusters=(
+                "cluster_id",
+                lambda s: sorted(s.tolist())
+            ),
+        )
+        .reset_index(drop=True)
     )
 
-    # ------------------------------------------------------------------
-    # Rebuild output table
-    # ------------------------------------------------------------------
-    dbscan_merged_df["x0"] = dbscan_merged_df["xmin"]
-    dbscan_merged_df["y0"] = dbscan_merged_df["ymin"]
-    dbscan_merged_df["Xsize"] = dbscan_merged_df["xmax"] - dbscan_merged_df["xmin"]
-    dbscan_merged_df["Ysize"] = dbscan_merged_df["ymax"] - dbscan_merged_df["ymin"]
+    merged["Xsize"] = (
+        merged["xmax"] -
+        merged["x0"]
+    )
 
-    dbscan_merged_df = dbscan_merged_df.sort_values("x0").reset_index(drop=True)
-    dbscan_merged_df["cluster_id"] = np.arange(len(dbscan_merged_df))
+    merged["Ysize"] = (
+        merged["ymax"] -
+        merged["y0"]
+    )
 
-    return dbscan_merged_df
+    # ------------------------------------------------------------
+    # Sort chronologically
+    # ------------------------------------------------------------
+
+    merged = (
+        merged
+        .sort_values("x0")
+        .reset_index(drop=True)
+    )
+
+    # New merged ID
+    merged["cluster_id"] = np.arange(len(merged))
+
+    # ------------------------------------------------------------
+    # Final format
+    # ------------------------------------------------------------
+
+    merged = merged[
+        [
+            "cluster_id",
+            "Npts",
+            "source_clusters",
+            "x0",
+            "y0",
+            "Xsize",
+            "Ysize",
+        ]
+    ]
+
+    return merged
 
 # %% Hyperbolic fit:
 @dataclass
