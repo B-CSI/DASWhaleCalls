@@ -8,7 +8,7 @@ If you use this repository in your research, a citation to the manuscript would 
 
 # 🚧 Work in progress — example workflow under development
 
-This repository is currently under development. The example workflow and accompanying scripts are being progressively refined, and therefore the code, file structure, parameters, and analysis steps may change substantially over the coming months(end of 2026).
+This repository is currently under development. The example workflow and accompanying scripts are being progressively refined, and therefore the code, file structure, parameters, and analysis steps may change substantially over the coming months (end of 2026).
 
 These changes concern the implementation and presentation of the example workflow and should not be interpreted as changes to the underlying method itself.
 
