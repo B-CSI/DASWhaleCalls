@@ -6,6 +6,12 @@ Diego-Tortosa, D.; Romagosa, M.; Ugalde, A.; Latorre, H.; Ventosa, S.; García, 
 
 If you use this repository in your research, a citation to the manuscript would be appreciated.
 
+# 🚧 Work in progress — example workflow under development
+
+This repository is currently under development. The example workflow and accompanying scripts are being progressively refined, and therefore the code, file structure, parameters, and analysis steps may change substantially over the coming months(end of 2026).
+
+These changes concern the implementation and presentation of the example workflow and should not be interpreted as changes to the underlying method itself.
+
 ## Requirements
 After cloning the repository:
 ```
@@ -39,7 +45,7 @@ This notebook serves as the main entry point of the project and some functionali
 
 Licensed under **AGPL-3.0**.
 
-**✅ Feel free to** fork, use, modify, redistribute, and deploy this project (including commercially).
+**✅ Feel free to** fork, use, modify, redistribute, and deploy this project.
 
 **🚫 If you distribute or deploy modified versions**, you must comply with the AGPL-3.0 by making the corresponding source code available and preserving the license and copyright notices.
 
