@@ -1044,107 +1044,137 @@ def fit_cluster(
 
 
 # %% find_crossing_points
-
 def find_crossing_points(
     x_pred,
+    y_pred,
     x_data,
     y_data,
     tol=0.5,
     x_lim=None,
     y_lim=None,
 ):
-    """
-    Find observed points close to a predicted curve.
+    x_pred = np.asarray(x_pred).ravel()
+    y_pred = np.asarray(y_pred).ravel()
+    x_data = np.asarray(x_data).ravel()
+    y_data = np.asarray(y_data).ravel()
 
-    Parameters
-    ----------
-    x_pred :
-        Predicted x values.
-
-    x_data :
-        Observed x values.
-
-    y_data :
-        Observed y values.
-
-    tol :
-        Tolerance in x units.
-
-    x_lim :
-        Optional x limits.
-
-    y_lim :
-        Optional y limits.
-
-    Returns
-    -------
-    x_cross :
-        x coordinates of crossing points.
-
-    y_cross :
-        y coordinates of crossing points.
-    """
-
-    x_data = np.asarray(
-        x_data,
-        dtype=float,
-    ).ravel()
-
-    y_data = np.asarray(
-        y_data,
-        dtype=float,
-    ).ravel()
-
-    x_pred = np.asarray(
-        x_pred,
-        dtype=float,
-    ).ravel()
-
-    # ========================================================
-    # Match observed and predicted X
-    # ========================================================
-
-    mask_cross = (
-        np.abs(
-            x_data
-            - x_pred
+    # ---------------------------------------------------------
+    # Validate
+    # ---------------------------------------------------------
+    if len(x_data) != len(y_data):
+        raise ValueError(
+            "x_data and y_data must have the same length."
         )
-        < tol
+
+    if len(x_pred) != len(y_pred):
+        raise ValueError(
+            "x_pred and y_pred must have the same length."
+        )
+
+    # Remove invalid curve points
+    valid_curve = (
+        np.isfinite(x_pred)
+        & np.isfinite(y_pred)
     )
 
-    # ========================================================
-    # Optional X limits
-    # ========================================================
+    x_pred = x_pred[valid_curve]
+    y_pred = y_pred[valid_curve]
+
+    # Remove invalid raw points
+    valid_data = (
+        np.isfinite(x_data)
+        & np.isfinite(y_data)
+    )
+
+    x_data = x_data[valid_data]
+    y_data = y_data[valid_data]
+
+    if len(x_data) == 0 or len(x_pred) == 0:
+        return (
+            np.array([], dtype=float),
+            np.array([], dtype=float),
+        )
+
+    # ---------------------------------------------------------
+    # Apply limits to raw data
+    # ---------------------------------------------------------
+    mask = np.ones(
+        len(x_data),
+        dtype=bool,
+    )
 
     if x_lim is not None:
-
-        mask_cross &= (
-            x_data >= x_lim[0]
-        ) & (
-            x_data <= x_lim[1]
+        mask &= (
+            (x_data >= x_lim[0])
+            & (x_data <= x_lim[1])
         )
-
-    # ========================================================
-    # Optional Y limits
-    # ========================================================
 
     if y_lim is not None:
-
-        mask_cross &= (
-            y_data >= y_lim[0]
-        ) & (
-            y_data <= y_lim[1]
+        mask &= (
+            (y_data >= y_lim[0])
+            & (y_data <= y_lim[1])
         )
 
-    x_cross = (
-        x_data[mask_cross]
+    x_data = x_data[mask]
+    y_data = y_data[mask]
+
+    if len(x_data) == 0:
+        return (
+            np.array([], dtype=float),
+            np.array([], dtype=float),
+        )
+
+    # ---------------------------------------------------------
+    # Sort curve by y
+    # ---------------------------------------------------------
+    order = np.argsort(y_pred)
+
+    y_pred = y_pred[order]
+    x_pred = x_pred[order]
+
+    # Remove duplicate y values if necessary
+    y_pred_unique, unique_idx = np.unique(
+        y_pred,
+        return_index=True,
     )
 
-    y_cross = (
-        y_data[mask_cross]
+    x_pred_unique = x_pred[unique_idx]
+
+    # ---------------------------------------------------------
+    # Evaluate fitted curve at the SAME y position
+    # as every raw pick
+    # ---------------------------------------------------------
+    inside = (
+        (y_data >= y_pred_unique.min())
+        & (y_data <= y_pred_unique.max())
+    )
+
+    x_fit_at_data_y = np.full(
+        len(y_data),
+        np.nan,
+        dtype=float,
+    )
+
+    x_fit_at_data_y[inside] = np.interp(
+        y_data[inside],
+        y_pred_unique,
+        x_pred_unique,
+    )
+
+    # ---------------------------------------------------------
+    # Time residual at SAME spatial position
+    # ---------------------------------------------------------
+    time_residual = np.abs(
+        x_data - x_fit_at_data_y
+    )
+
+    mask_cross = (
+        np.isfinite(time_residual)
+        & (time_residual <= tol)
     )
 
     return (
-        x_cross,
-        y_cross,
+        x_data[mask_cross],
+        y_data[mask_cross],
     )
+# %%

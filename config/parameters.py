@@ -21,7 +21,7 @@ min_fit_points = 5
 fit_grid_size = 500
 early_time_weight = 20
 early_time_weight_power = 10
-refit_time_threshold = 0.3
+refit_time_threshold = 0.5
 # Positioning note:
 dx_res = 25
 dy_res = 25

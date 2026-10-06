@@ -19,7 +19,7 @@ venv.bak/
 # Data / test folders
 **/data_test/
 **/test/
-**/results/
+# **/results/
 
 # Logs and temporary files
 *.log
