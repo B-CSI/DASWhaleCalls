@@ -2,14 +2,7 @@
 import numpy as np
 import pandas as pd
 from sklearn.cluster import DBSCAN
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from scipy.cluster.hierarchy import linkage, fcluster
-from scipy.spatial.distance import pdist
 from dataclasses import dataclass
-import datetime as dt
 
 # %% run_dbscan function:
 def run_dbscan(x, y, dist_eps, min_pts):
@@ -241,33 +234,302 @@ def merge_dbscan_clusters(
 
     return merged
 
-# %% Hyperbolic fit:
+# %% Hyperbolic fit (using Channel):
+# @dataclass
+# class FitResult:
+#     """All parameters and quality measures from fitting one hyperbola to one cluster.
+
+#     After the fitting routine finishes, every piece of information about the
+#     best curve it found is stored here so it can be used for plotting and
+#     printed to the terminal.
+#     """
+#     cluster_id: int             # which cluster this result belongs to
+#     y0: float                   # channel position at the apex of the hyperbola
+#     t0: float                   # arrival time at the apex, in elapsed seconds
+#     vapp: float                 # apparent velocity along the fibre
+#     rmse: float                 # average time error of the fit (seconds); lower is better
+#     r2: float
+#     mse: float
+#     n_points: int               # number of picks used to produce this fit
+#     n_removed: int = 0          # picks discarded as outliers before the second fit
+#     initial_rmse: float | None = None  # RMSE from the first pass, before refitting
+
+# def x_fit_evaluation(x_raw,x_pred):
+#     x_residuals = x_raw - x_pred
+#     mse = np.mean(x_residuals**2)
+#     ss_res = np.sum(x_residuals**2)
+#     ss_tot = np.sum((x_raw - np.mean(x_raw))**2)
+#     r2 = (1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0)
+#     return x_residuals, r2, mse
+
+# def fit_cluster(
+#     cluster_data: pd.DataFrame,
+#     min_points: int,
+#     grid_size: int,
+#     early_time_weight: float,
+#     early_time_weight_power: float,
+#     refit: bool,
+#     refit_time_threshold: float,
+#     refit_no_early_weight: bool = False,
+# ) -> FitResult | None:
+#     """Fit the NMO hyperbola  t² = t₀² + (y - y₀)² / v²  to one cluster.
+
+#     y₀ enters the model nonlinearly, so we fix it on a dense grid and solve
+#     the linear sub-problem for (t₀², 1/v²) at each trial value, keeping the
+#     best result. Optionally a second pass is run after removing picks whose
+#     time residual exceeds *refit_time_threshold*.
+
+#     Returns a FitResult, or None if the cluster has too few usable picks.
+#     """
+#     # Validate the tuning parameters up-front so we fail immediately with a
+#     # clear message rather than producing a silent bad result later.
+#     if early_time_weight < 1.0:
+#         raise ValueError("--early-time-weight must be >= 1.")
+#     if early_time_weight_power <= 0.0:
+#         raise ValueError("--early-time-weight-power must be > 0.")
+#     if refit_time_threshold <= 0.0:
+#         raise ValueError("--refit-time-threshold must be > 0.")
+
+#     if len(cluster_data) < min_points:
+#         return None
+#     # Extract the arrival times and channel positions as plain number arrays
+#     cluster_id_data = int(cluster_data["cluster_id"].iloc[0])
+#     t_arr = cluster_data["x"].to_numpy(dtype=float)  # arrival time of each pick (seconds)
+#     y_arr = cluster_data["Channel"].to_numpy(dtype=float)        # channel position of each pick
+#     # Remove any picks that have missing or infinite values in either column
+#     finite = np.isfinite(t_arr) & np.isfinite(y_arr)
+#     t_arr = t_arr[finite]
+#     y_arr = y_arr[finite]
+#     if len(t_arr) < min_points or np.min(y_arr) == np.max(y_arr):
+#         return None
+#     def fit_once(cluster_id_data, times: np.ndarray, values: np.ndarray, etw: float | None = None) -> FitResult | None:
+#         """Fit the hyperbola to the given picks and return the best FitResult.
+
+#         'times'  — arrival time of each pick (seconds)
+#         'values' — channel position of each pick
+#         'etw'    — override for early_time_weight; None means use the outer value
+#         """
+#         # Can't fit a curve with too few points or if all picks are on the same channel
+#         if len(times) < min_points or np.min(values) == np.max(values):
+#             return None
+#         # Build a grid of candidate apex positions (y0) spanning slightly beyond
+#         # the data range so the apex can sit just outside the observed channels
+#         y_span = float(np.max(values) - np.min(values))
+#         y_margin = max(1.0, 0.25 * y_span)  # at least 1 channel unit of margin
+#         y0_grid = np.linspace(float(np.min(values) - y_margin), float(np.max(values) + y_margin), grid_size)
+#         # Square the arrival times once; the model is linear in t² not in t
+#         t2 = times**2
+#         # Compute a per-pick weight: earlier picks get a higher weight when etw > 1
+#         effective_etw = early_time_weight if etw is None else etw
+#         t_span = float(np.max(times) - np.min(times))
+#         if t_span > 0.0 and effective_etw > 1.0:
+#             # Ramp weight from `effective_etw` at the earliest pick down to
+#             # 1.0 at the latest, with `early_time_weight_power` controlling the
+#             # decay shape (1 = linear, >1 = convex, <1 = concave).
+#             normalized_age = (times - np.min(times)) / t_span
+#             weights = 1.0 + (effective_etw - 1.0) * (1.0 - normalized_age) ** early_time_weight_power
+#         else:
+#             weights = np.ones_like(times)  # equal weight for every pick
+#         # Weighted least squares is equivalent to OLS on sqrt(w)-scaled data.
+#         sqrt_weights = np.sqrt(weights)
+#         best: FitResult | None = None
+#         best_rmse = np.inf
+#         # Try every candidate apex position and keep the one that gives the smallest error
+#         for y0 in y0_grid:
+#             # Squared distance from each pick to the candidate apex along the channel axis
+#             radius2 = (values - y0) ** 2
+#             # Set up the linear system:  t² ≈ t0² · 1  +  (1/v²) · radius²
+#             # 'design' has two columns: a column of ones (for t0²) and radius² (for 1/v²)
+#             design = np.column_stack([np.ones_like(radius2), radius2])
+#             # Apply the sqrt-weight scaling to convert weighted to ordinary least squares
+#             weighted_design = design * sqrt_weights[:, None]
+#             weighted_t2 = t2 * sqrt_weights
+#             try:
+#                 # Solve for the two unknowns [t0², 1/v²] using least squares
+#                 coeffs, _, _, _ = np.linalg.lstsq(weighted_design, weighted_t2, rcond=None)
+#             except np.linalg.LinAlgError:
+#                 continue  # skip this y0 if the numerical solver fails
+#             t0_squared = float(coeffs[0])
+#             inv_v_squared = float(coeffs[1])
+#             # Reject non-physical solutions: t₀ and v must both be real and positive.
+#             if t0_squared < 0.0 or inv_v_squared <= 0.0:
+#                 continue
+#             # Evaluate the fitted curve at each pick's channel position
+#             t_fit = np.sqrt(t0_squared + inv_v_squared * radius2)
+#             # RMSE: root-mean-square error between predicted and observed arrival times
+#             rmse = float(np.sqrt(np.average((times - t_fit) ** 2, weights=weights)))
+#             if rmse < best_rmse and y0>0:
+#                 best_rmse = rmse
+#                 _, r2, mse = x_fit_evaluation(times,t_fit)
+#                 best = FitResult(
+#                     cluster_id = cluster_id_data,
+#                     y0=float(y0),
+#                     t0=float(np.sqrt(t0_squared)),          # recover t0 from t0²
+#                     vapp=float(1.0 / np.sqrt(inv_v_squared)),  # recover v  from 1/v²
+#                     rmse=rmse,
+#                     r2=float(r2),
+#                     mse=float(mse),
+#                     n_points=len(times),
+#                 )
+#         return best
+#     # --- First pass: fit using all picks in the cluster ---
+#     first_fit = fit_once(cluster_id_data, t_arr, y_arr)
+#     if first_fit is None or not refit:
+#         return first_fit
+#     first_fit.initial_rmse = first_fit.rmse
+#     # Second pass: drop picks whose time residual exceeds the threshold, then
+#     # refit the cleaned subset. If nothing was removed or too few points remain,
+#     # return the first fit unchanged.
+#     first_t_fit = np.sqrt(first_fit.t0**2 + ((y_arr - first_fit.y0) ** 2) / (first_fit.vapp**2))
+#     keep_mask = np.abs(t_arr - first_t_fit) <= refit_time_threshold
+#     n_removed = int(len(t_arr) - np.count_nonzero(keep_mask))
+#     if n_removed == 0 or np.count_nonzero(keep_mask) < min_points:
+#         return first_fit
+#     # --- Second pass: fit using only the inlier picks ---
+#     second_fit = fit_once(cluster_id_data, t_arr[keep_mask], y_arr[keep_mask], etw=1.0 if refit_no_early_weight else None)
+#     if second_fit is None:
+#         return first_fit
+#     second_fit.n_removed = n_removed
+#     second_fit.initial_rmse = first_fit.rmse
+#     return second_fit
+
+# # %% find_crossing_points function:
+# def find_crossing_points(x_pred, x_data, y_data, tol=0.5, x_lim=None, y_lim=None):
+#     x_data = np.array(x_data).ravel()
+#     y_data = np.array(y_data).ravel()
+#     x_pred = np.array(x_pred).ravel()
+#     # Máscara por tolerancia en X
+#     mask_cross = np.abs(x_data - x_pred) < tol
+#     # Aplicar límites si se proporcionan
+#     if x_lim is not None:
+#         mask_cross &= (x_data >= x_lim[0]) & (x_data <= x_lim[1])
+#     if y_lim is not None:
+#         mask_cross &= (y_data >= y_lim[0]) & (y_data <= y_lim[1])
+#     x_cross = x_data[mask_cross]
+#     y_cross = y_data[mask_cross]
+#     return x_cross, y_cross
+
+# %% Hyperbolic fit (using physical distance in metres):
 @dataclass
 class FitResult:
-    """All parameters and quality measures from fitting one hyperbola to one cluster.
+    """Parameters and quality measures from fitting one NMO hyperbola.
 
-    After the fitting routine finishes, every piece of information about the
-    best curve it found is stored here so it can be used for plotting and
-    printed to the terminal.
+    The fit is performed entirely in physical units:
+
+        x  -> time [s]
+        y  -> distance along the fibre [m]
+
+    Hyperbolic model:
+
+        t² = t₀² + (y - y₀)² / v²
+
+    Therefore:
+
+        y0   -> apex position [m]
+        t0   -> arrival time at apex [s]
+        vapp -> apparent velocity [m/s]
+        rmse -> time error [s]
+        mse  -> time error squared [s²]
     """
-    cluster_id: int             # which cluster this result belongs to
-    y0: float                   # channel position at the apex of the hyperbola
-    t0: float                   # arrival time at the apex, in elapsed seconds
-    vapp: float                 # apparent velocity along the fibre
-    rmse: float                 # average time error of the fit (seconds); lower is better
+
+    cluster_id: int
+
+    # Position of the hyperbola apex [m]
+    y0: float
+
+    # Arrival time at the apex [s]
+    t0: float
+
+    # Apparent velocity [m/s]
+    vapp: float
+
+    # Fit quality
+    rmse: float
     r2: float
     mse: float
-    n_points: int               # number of picks used to produce this fit
-    n_removed: int = 0          # picks discarded as outliers before the second fit
-    initial_rmse: float | None = None  # RMSE from the first pass, before refitting
 
-def x_fit_evaluation(x_raw,x_pred):
-    x_residuals = x_raw - x_pred
-    mse = np.mean(x_residuals**2)
-    ss_res = np.sum(x_residuals**2)
-    ss_tot = np.sum((x_raw - np.mean(x_raw))**2)
-    r2 = (1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0)
-    return x_residuals, r2, mse
+    # Number of picks used in the final fit
+    n_points: int
+
+    # Number of picks removed during refit
+    n_removed: int = 0
+
+    # RMSE before refitting
+    initial_rmse: float | None = None
+
+
+def x_fit_evaluation(
+    x_raw,
+    x_pred,
+):
+    """
+    Evaluate residuals and goodness of fit.
+
+    Parameters
+    ----------
+    x_raw : array-like
+        Observed arrival times [s].
+
+    x_pred : array-like
+        Predicted arrival times [s].
+
+    Returns
+    -------
+    residuals : ndarray
+        Time residuals [s].
+
+    r2 : float
+        Coefficient of determination.
+
+    mse : float
+        Mean squared error [s²].
+    """
+
+    x_raw = np.asarray(
+        x_raw,
+        dtype=float,
+    )
+
+    x_pred = np.asarray(
+        x_pred,
+        dtype=float,
+    )
+
+    x_residuals = (
+        x_raw - x_pred
+    )
+
+    mse = float(
+        np.mean(
+            x_residuals ** 2
+        )
+    )
+
+    ss_res = np.sum(
+        x_residuals ** 2
+    )
+
+    ss_tot = np.sum(
+        (
+            x_raw
+            - np.mean(x_raw)
+        ) ** 2
+    )
+
+    if ss_tot != 0.0:
+        r2 = (
+            1.0
+            - ss_res / ss_tot
+        )
+    else:
+        r2 = 0.0
+
+    return (
+        x_residuals,
+        float(r2),
+        mse,
+    )
+
 
 def fit_cluster(
     cluster_data: pd.DataFrame,
@@ -279,139 +541,610 @@ def fit_cluster(
     refit_time_threshold: float,
     refit_no_early_weight: bool = False,
 ) -> FitResult | None:
-    """Fit the NMO hyperbola  t² = t₀² + (y - y₀)² / v²  to one cluster.
-
-    y₀ enters the model nonlinearly, so we fix it on a dense grid and solve
-    the linear sub-problem for (t₀², 1/v²) at each trial value, keeping the
-    best result. Optionally a second pass is run after removing picks whose
-    time residual exceeds *refit_time_threshold*.
-
-    Returns a FitResult, or None if the cluster has too few usable picks.
     """
-    # Validate the tuning parameters up-front so we fail immediately with a
-    # clear message rather than producing a silent bad result later.
+    Fit an NMO hyperbola to one cluster using PHYSICAL DISTANCE.
+
+    The fitted model is:
+
+        t² = t₀² + (y - y₀)² / v²
+
+    where:
+
+        t  = arrival time [s]
+        y  = distance along fibre [m]
+        t0 = apex arrival time [s]
+        y0 = apex position [m]
+        v  = apparent velocity [m/s]
+
+    IMPORTANT
+    ---------
+    This function does NOT use the HDF5 Channel index.
+
+    The input DataFrame must contain:
+
+        cluster_id
+        x
+        y
+
+    with:
+
+        x = time [s]
+        y = distance [m]
+
+    The function therefore works independently of how the original
+    DAS channels were numbered or cropped.
+    """
+
+    # ========================================================
+    # Validate parameters
+    # ========================================================
+
     if early_time_weight < 1.0:
-        raise ValueError("--early-time-weight must be >= 1.")
+        raise ValueError(
+            "early_time_weight must be >= 1."
+        )
+
     if early_time_weight_power <= 0.0:
-        raise ValueError("--early-time-weight-power must be > 0.")
+        raise ValueError(
+            "early_time_weight_power must be > 0."
+        )
+
     if refit_time_threshold <= 0.0:
-        raise ValueError("--refit-time-threshold must be > 0.")
+        raise ValueError(
+            "refit_time_threshold must be > 0."
+        )
+
+    # ========================================================
+    # Minimum number of points
+    # ========================================================
 
     if len(cluster_data) < min_points:
         return None
-    # Extract the arrival times and channel positions as plain number arrays
-    cluster_id_data = int(cluster_data["cluster_id"].iloc[0])
-    t_arr = cluster_data["x"].to_numpy(dtype=float)  # arrival time of each pick (seconds)
-    y_arr = cluster_data["Channel"].to_numpy(dtype=float)        # channel position of each pick
-    # Remove any picks that have missing or infinite values in either column
-    finite = np.isfinite(t_arr) & np.isfinite(y_arr)
+
+    # ========================================================
+    # Cluster ID
+    # ========================================================
+
+    cluster_id_data = int(
+        cluster_data[
+            "cluster_id"
+        ].iloc[0]
+    )
+
+    # ========================================================
+    # Extract PHYSICAL coordinates
+    # ========================================================
+
+    # x = arrival time [s]
+    t_arr = cluster_data[
+        "x"
+    ].to_numpy(
+        dtype=float
+    )
+
+    # y = physical distance [m]
+    y_arr = cluster_data[
+        "y"
+    ].to_numpy(
+        dtype=float
+    )
+
+    # ========================================================
+    # Remove invalid values
+    # ========================================================
+
+    finite = (
+        np.isfinite(t_arr)
+        & np.isfinite(y_arr)
+    )
+
     t_arr = t_arr[finite]
     y_arr = y_arr[finite]
-    if len(t_arr) < min_points or np.min(y_arr) == np.max(y_arr):
-        return None
-    def fit_once(cluster_id_data, times: np.ndarray, values: np.ndarray, etw: float | None = None) -> FitResult | None:
-        """Fit the hyperbola to the given picks and return the best FitResult.
 
-        'times'  — arrival time of each pick (seconds)
-        'values' — channel position of each pick
-        'etw'    — override for early_time_weight; None means use the outer value
+    if len(t_arr) < min_points:
+        return None
+
+    # All picks cannot be at exactly the same distance
+    if np.min(y_arr) == np.max(y_arr):
+        return None
+
+    # ========================================================
+    # Fit function
+    # ========================================================
+
+    def fit_once(
+        cluster_id_data,
+        times: np.ndarray,
+        distances: np.ndarray,
+        etw: float | None = None,
+    ) -> FitResult | None:
         """
-        # Can't fit a curve with too few points or if all picks are on the same channel
-        if len(times) < min_points or np.min(values) == np.max(values):
+        Perform one hyperbolic fit.
+
+        Parameters
+        ----------
+        times :
+            Arrival times [s].
+
+        distances :
+            Physical positions along the fibre [m].
+
+        etw :
+            Optional override for early-time weighting.
+        """
+
+        # ----------------------------------------------------
+        # Basic validation
+        # ----------------------------------------------------
+
+        if len(times) < min_points:
             return None
-        # Build a grid of candidate apex positions (y0) spanning slightly beyond
-        # the data range so the apex can sit just outside the observed channels
-        y_span = float(np.max(values) - np.min(values))
-        y_margin = max(1.0, 0.25 * y_span)  # at least 1 channel unit of margin
-        y0_grid = np.linspace(float(np.min(values) - y_margin), float(np.max(values) + y_margin), grid_size)
-        # Square the arrival times once; the model is linear in t² not in t
-        t2 = times**2
-        # Compute a per-pick weight: earlier picks get a higher weight when etw > 1
-        effective_etw = early_time_weight if etw is None else etw
-        t_span = float(np.max(times) - np.min(times))
-        if t_span > 0.0 and effective_etw > 1.0:
-            # Ramp weight from `effective_etw` at the earliest pick down to
-            # 1.0 at the latest, with `early_time_weight_power` controlling the
-            # decay shape (1 = linear, >1 = convex, <1 = concave).
-            normalized_age = (times - np.min(times)) / t_span
-            weights = 1.0 + (effective_etw - 1.0) * (1.0 - normalized_age) ** early_time_weight_power
-        else:
-            weights = np.ones_like(times)  # equal weight for every pick
-        # Weighted least squares is equivalent to OLS on sqrt(w)-scaled data.
-        sqrt_weights = np.sqrt(weights)
-        best: FitResult | None = None
-        best_rmse = np.inf
-        # Try every candidate apex position and keep the one that gives the smallest error
-        for y0 in y0_grid:
-            # Squared distance from each pick to the candidate apex along the channel axis
-            radius2 = (values - y0) ** 2
-            # Set up the linear system:  t² ≈ t0² · 1  +  (1/v²) · radius²
-            # 'design' has two columns: a column of ones (for t0²) and radius² (for 1/v²)
-            design = np.column_stack([np.ones_like(radius2), radius2])
-            # Apply the sqrt-weight scaling to convert weighted to ordinary least squares
-            weighted_design = design * sqrt_weights[:, None]
-            weighted_t2 = t2 * sqrt_weights
-            try:
-                # Solve for the two unknowns [t0², 1/v²] using least squares
-                coeffs, _, _, _ = np.linalg.lstsq(weighted_design, weighted_t2, rcond=None)
-            except np.linalg.LinAlgError:
-                continue  # skip this y0 if the numerical solver fails
-            t0_squared = float(coeffs[0])
-            inv_v_squared = float(coeffs[1])
-            # Reject non-physical solutions: t₀ and v must both be real and positive.
-            if t0_squared < 0.0 or inv_v_squared <= 0.0:
-                continue
-            # Evaluate the fitted curve at each pick's channel position
-            t_fit = np.sqrt(t0_squared + inv_v_squared * radius2)
-            # RMSE: root-mean-square error between predicted and observed arrival times
-            rmse = float(np.sqrt(np.average((times - t_fit) ** 2, weights=weights)))
-            if rmse < best_rmse and y0>0:
-                best_rmse = rmse
-                _, r2, mse = x_fit_evaluation(times,t_fit)
-                best = FitResult(
-                    cluster_id = cluster_id_data,
-                    y0=float(y0),
-                    t0=float(np.sqrt(t0_squared)),          # recover t0 from t0²
-                    vapp=float(1.0 / np.sqrt(inv_v_squared)),  # recover v  from 1/v²
-                    rmse=rmse,
-                    r2=float(r2),
-                    mse=float(mse),
-                    n_points=len(times),
+
+        if (
+            np.min(distances)
+            == np.max(distances)
+        ):
+            return None
+
+        # ----------------------------------------------------
+        # Candidate apex positions
+        #
+        # Everything here is in METRES.
+        # ----------------------------------------------------
+
+        y_span = float(
+            np.max(distances)
+            - np.min(distances)
+        )
+
+        # Allow the apex to lie slightly outside
+        # the observed cluster.
+        #
+        # Minimum margin = 1 m
+        y_margin = max(
+            1.0,
+            0.25 * y_span,
+        )
+
+        y0_grid = np.linspace(
+            float(
+                np.min(distances)
+                - y_margin
+            ),
+            float(
+                np.max(distances)
+                + y_margin
+            ),
+            grid_size,
+        )
+
+        # ----------------------------------------------------
+        # Square arrival times
+        #
+        # Model:
+        #
+        # t² = t0² + (y-y0)² / v²
+        #
+        # ----------------------------------------------------
+
+        t2 = times ** 2
+
+        # ----------------------------------------------------
+        # Early-time weighting
+        # ----------------------------------------------------
+
+        effective_etw = (
+            early_time_weight
+            if etw is None
+            else etw
+        )
+
+        t_span = float(
+            np.max(times)
+            - np.min(times)
+        )
+
+        if (
+            t_span > 0.0
+            and effective_etw > 1.0
+        ):
+
+            normalized_age = (
+                times
+                - np.min(times)
+            ) / t_span
+
+            weights = (
+                1.0
+                + (
+                    effective_etw
+                    - 1.0
                 )
+                * (
+                    1.0
+                    - normalized_age
+                )
+                ** early_time_weight_power
+            )
+
+        else:
+
+            weights = np.ones_like(
+                times
+            )
+
+        # ----------------------------------------------------
+        # Weighted least squares
+        # ----------------------------------------------------
+
+        sqrt_weights = np.sqrt(
+            weights
+        )
+
+        best = None
+        best_rmse = np.inf
+
+        # ====================================================
+        # Search for best apex position
+        # ====================================================
+
+        for y0 in y0_grid:
+
+            # ------------------------------------------------
+            # Physical distance from candidate apex [m]
+            # ------------------------------------------------
+
+            radius2 = (
+                distances - y0
+            ) ** 2
+
+            # ------------------------------------------------
+            # Linearized model:
+            #
+            # t² = t0² + (1/v²) * radius²
+            #
+            # Unknowns:
+            #
+            # t0²
+            # 1/v²
+            # ------------------------------------------------
+
+            design = np.column_stack([
+                np.ones_like(
+                    radius2
+                ),
+                radius2,
+            ])
+
+            weighted_design = (
+                design
+                * sqrt_weights[:, None]
+            )
+
+            weighted_t2 = (
+                t2
+                * sqrt_weights
+            )
+
+            try:
+
+                coeffs, _, _, _ = (
+                    np.linalg.lstsq(
+                        weighted_design,
+                        weighted_t2,
+                        rcond=None,
+                    )
+                )
+
+            except np.linalg.LinAlgError:
+
+                continue
+
+            # ------------------------------------------------
+            # Recover physical parameters
+            # ------------------------------------------------
+
+            t0_squared = float(
+                coeffs[0]
+            )
+
+            inv_v_squared = float(
+                coeffs[1]
+            )
+
+            # ------------------------------------------------
+            # Reject non-physical solutions
+            # ------------------------------------------------
+
+            if (
+                t0_squared < 0.0
+                or inv_v_squared <= 0.0
+            ):
+                continue
+
+            # ------------------------------------------------
+            # Predicted arrival times
+            # ------------------------------------------------
+
+            t_fit = np.sqrt(
+                t0_squared
+                + inv_v_squared
+                * radius2
+            )
+
+            # ------------------------------------------------
+            # RMSE [s]
+            # ------------------------------------------------
+
+            rmse = float(
+                np.sqrt(
+                    np.average(
+                        (
+                            times
+                            - t_fit
+                        ) ** 2,
+                        weights=weights,
+                    )
+                )
+            )
+
+            # ------------------------------------------------
+            # Keep best solution
+            # ------------------------------------------------
+
+            if rmse < best_rmse:
+
+                best_rmse = rmse
+
+                _, r2, mse = (
+                    x_fit_evaluation(
+                        times,
+                        t_fit,
+                    )
+                )
+
+                best = FitResult(
+
+                    cluster_id=(
+                        cluster_id_data
+                    ),
+
+                    # Physical distance [m]
+                    y0=float(y0),
+
+                    # Time [s]
+                    t0=float(
+                        np.sqrt(
+                            t0_squared
+                        )
+                    ),
+
+                    # Velocity [m/s]
+                    vapp=float(
+                        1.0
+                        / np.sqrt(
+                            inv_v_squared
+                        )
+                    ),
+
+                    rmse=float(
+                        rmse
+                    ),
+
+                    r2=float(
+                        r2
+                    ),
+
+                    mse=float(
+                        mse
+                    ),
+
+                    n_points=len(
+                        times
+                    ),
+                )
+
         return best
-    # --- First pass: fit using all picks in the cluster ---
-    first_fit = fit_once(cluster_id_data, t_arr, y_arr)
-    if first_fit is None or not refit:
+
+    # ========================================================
+    # FIRST FIT
+    # ========================================================
+
+    first_fit = fit_once(
+        cluster_id_data,
+        t_arr,
+        y_arr,
+    )
+
+    if (
+        first_fit is None
+        or not refit
+    ):
         return first_fit
-    first_fit.initial_rmse = first_fit.rmse
-    # Second pass: drop picks whose time residual exceeds the threshold, then
-    # refit the cleaned subset. If nothing was removed or too few points remain,
-    # return the first fit unchanged.
-    first_t_fit = np.sqrt(first_fit.t0**2 + ((y_arr - first_fit.y0) ** 2) / (first_fit.vapp**2))
-    keep_mask = np.abs(t_arr - first_t_fit) <= refit_time_threshold
-    n_removed = int(len(t_arr) - np.count_nonzero(keep_mask))
-    if n_removed == 0 or np.count_nonzero(keep_mask) < min_points:
+
+    first_fit.initial_rmse = (
+        first_fit.rmse
+    )
+
+    # ========================================================
+    # Calculate first-fit prediction
+    #
+    # IMPORTANT:
+    # y_arr and y0 are both in metres.
+    # vapp is m/s.
+    # ========================================================
+
+    first_t_fit = np.sqrt(
+        first_fit.t0 ** 2
+        + (
+            (
+                y_arr
+                - first_fit.y0
+            ) ** 2
+            / first_fit.vapp ** 2
+        )
+    )
+
+    # ========================================================
+    # Remove temporal outliers
+    # ========================================================
+
+    keep_mask = (
+        np.abs(
+            t_arr
+            - first_t_fit
+        )
+        <= refit_time_threshold
+    )
+
+    n_removed = int(
+        len(t_arr)
+        - np.count_nonzero(
+            keep_mask
+        )
+    )
+
+    # Nothing removed or too few points remain
+    if (
+        n_removed == 0
+        or np.count_nonzero(
+            keep_mask
+        ) < min_points
+    ):
+
         return first_fit
-    # --- Second pass: fit using only the inlier picks ---
-    second_fit = fit_once(cluster_id_data, t_arr[keep_mask], y_arr[keep_mask], etw=1.0 if refit_no_early_weight else None)
+
+    # ========================================================
+    # SECOND FIT
+    # ========================================================
+
+    second_fit = fit_once(
+        cluster_id_data,
+        t_arr[keep_mask],
+        y_arr[keep_mask],
+        etw=(
+            1.0
+            if refit_no_early_weight
+            else None
+        ),
+    )
+
     if second_fit is None:
         return first_fit
-    second_fit.n_removed = n_removed
-    second_fit.initial_rmse = first_fit.rmse
+
+    second_fit.n_removed = (
+        n_removed
+    )
+
+    second_fit.initial_rmse = (
+        first_fit.rmse
+    )
+
     return second_fit
 
-# %% find_crossing_points function:
-def find_crossing_points(x_pred, x_data, y_data, tol=0.5, x_lim=None, y_lim=None):
-    x_data = np.array(x_data).ravel()
-    y_data = np.array(y_data).ravel()
-    x_pred = np.array(x_pred).ravel()
-    # Máscara por tolerancia en X
-    mask_cross = np.abs(x_data - x_pred) < tol
-    # Aplicar límites si se proporcionan
+
+# %% find_crossing_points
+
+def find_crossing_points(
+    x_pred,
+    x_data,
+    y_data,
+    tol=0.5,
+    x_lim=None,
+    y_lim=None,
+):
+    """
+    Find observed points close to a predicted curve.
+
+    Parameters
+    ----------
+    x_pred :
+        Predicted x values.
+
+    x_data :
+        Observed x values.
+
+    y_data :
+        Observed y values.
+
+    tol :
+        Tolerance in x units.
+
+    x_lim :
+        Optional x limits.
+
+    y_lim :
+        Optional y limits.
+
+    Returns
+    -------
+    x_cross :
+        x coordinates of crossing points.
+
+    y_cross :
+        y coordinates of crossing points.
+    """
+
+    x_data = np.asarray(
+        x_data,
+        dtype=float,
+    ).ravel()
+
+    y_data = np.asarray(
+        y_data,
+        dtype=float,
+    ).ravel()
+
+    x_pred = np.asarray(
+        x_pred,
+        dtype=float,
+    ).ravel()
+
+    # ========================================================
+    # Match observed and predicted X
+    # ========================================================
+
+    mask_cross = (
+        np.abs(
+            x_data
+            - x_pred
+        )
+        < tol
+    )
+
+    # ========================================================
+    # Optional X limits
+    # ========================================================
+
     if x_lim is not None:
-        mask_cross &= (x_data >= x_lim[0]) & (x_data <= x_lim[1])
+
+        mask_cross &= (
+            x_data >= x_lim[0]
+        ) & (
+            x_data <= x_lim[1]
+        )
+
+    # ========================================================
+    # Optional Y limits
+    # ========================================================
+
     if y_lim is not None:
-        mask_cross &= (y_data >= y_lim[0]) & (y_data <= y_lim[1])
-    x_cross = x_data[mask_cross]
-    y_cross = y_data[mask_cross]
-    return x_cross, y_cross
+
+        mask_cross &= (
+            y_data >= y_lim[0]
+        ) & (
+            y_data <= y_lim[1]
+        )
+
+    x_cross = (
+        x_data[mask_cross]
+    )
+
+    y_cross = (
+        y_data[mask_cross]
+    )
+
+    return (
+        x_cross,
+        y_cross,
+    )
