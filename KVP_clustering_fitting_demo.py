@@ -7,13 +7,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import pandas as pd
+from datetime import datetime
 
 from config.parameters import *
 from src.utils import *
 
+SCRIPT_NAME = "KVP_clustering_fitting_demo.py"
 # %% Load KVP picks
-csv_path = os.path.join(".","results","2024_01_13_07h57m34s_HDAS_SAFE_DASWhaleCalls_example_KVPpicks.csv")
-CSVfile_raw_data = pd.read_csv(csv_path,comment="#")
+csv_path = os.path.join(".","data_example","2024_01_13_07h57m34s_HDAS_SAFE_DASWhaleCalls_example_rawKVPpicks.csv")
+CSVfile_raw_data = pd.read_csv(csv_path,sep=";",comment="#")
 
 print("\n=== KVP PICKS ===")
 print(f"Loaded: {csv_path}")
@@ -183,6 +185,84 @@ print(
 
 print(
     f"Selected KVP picks: "
+    f"{len(KVP_selected_picks)}"
+)
+
+input_stem = os.path.splitext(
+    os.path.basename(csv_path)
+)[0]
+
+# Remove "_rawKVPpicks" from the input filename
+input_stem = input_stem.replace(
+    "_rawKVPpicks",
+    "",
+)
+
+output_filename = (
+    input_stem
+    + "_selectedKVPpicks.csv"
+)
+
+output_file = os.path.join(
+    ".",
+    "data_example",
+    output_filename,
+)
+
+# ------------------------------------------------------------
+# Creation date
+# ------------------------------------------------------------
+
+creation_date = datetime.now().strftime(
+    "%Y-%m-%d %H:%M:%S"
+)
+
+# ------------------------------------------------------------
+# Save CSV
+# ------------------------------------------------------------
+with open(
+    output_file,
+    "w",
+    encoding="utf-8",
+    newline="",
+) as f:
+
+    f.write(
+        "# KVP SELECTED PICKS\n"
+    )
+
+    f.write(
+        f"# created by {SCRIPT_NAME} ({creation_date})\n"
+    )
+
+    f.write(
+        f"# input_file: "
+        f"{os.path.basename(csv_path)}\n"
+    )
+
+    f.write(
+        "# description = Selected KVP picks after "
+        "spatio-temporal clustering and hyperbolic fitting.\n"
+    )
+
+    f.write(
+        "# DATA\n"
+    )
+
+    KVP_selected_picks.to_csv(
+        f,
+        index=False,
+        sep=";",
+    )
+
+
+print(
+    f"\nCSV saved to:\n"
+    f"{output_file}"
+)
+
+print(
+    f"Rows written: "
     f"{len(KVP_selected_picks)}"
 )
 
@@ -384,3 +464,5 @@ fig.savefig(
 )
 plt.show()
 plt.close(fig)
+
+# %%

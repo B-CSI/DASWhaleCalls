@@ -1,43 +1,216 @@
-# %% 
+# %%
 import h5py
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy as scp
 from datetime import datetime, timezone
 from obspy import Trace, UTCDateTime
 import pandas as pd
-import re
-from src.signal_functions import *
-# %% 
-file_path = "data_test/2024_01_13_07h57m34s_HDAS_SAFE_DASWhaleCalls_example.h5"
+
+from src.signal_functions import (
+    SigFilt_HP,
+    SigFilt_LP,
+)
+
+from kvp import KVP
+
+SCRIPT_NAME = "h5reading_KVPapplication"
+# %%
+# ============================================================
+# LOAD HDF5
+# ============================================================
+
+file_path = os.path.join(
+    ".",
+    "data_example",
+    "2024_01_13_07h57m34s_HDAS_SAFE_DASWhaleCalls_example.h5",
+)
+
 with h5py.File(file_path, "r") as f:
-    data = f["data"][:] # data = [distance, time]
-    fs = float(f.attrs["sampling_frequency"])
-    dx = float(f.attrs["spatial_sampling"])
-    unix_time_start = float(f.attrs["unix_time_start"])
-    distance_start = float(f.attrs["distance_start"])
+
+    # --------------------------------------------------------
+    # Data
+    # --------------------------------------------------------
+
+    data = f["data"][:]
+
+    # --------------------------------------------------------
+    # Acquisition metadata
+    # --------------------------------------------------------
+
+    fs = float(
+        f.attrs["sampling_frequency"]
+    )
+
+    dx = float(
+        f.attrs["spatial_sampling"]
+    )
+
+    unix_time_start = float(
+        f.attrs["unix_time_start"]
+    )
+
+    distance_start = float(
+        f.attrs["distance_start"]
+    )
+
+    # --------------------------------------------------------
+    # Original channel metadata
+    # --------------------------------------------------------
+
+    original_channel_start = int(
+        f.attrs["original_channel_start"]
+    )
+
+    original_channel_end = int(
+        f.attrs["original_channel_end"]
+    )
+
+    if "original_number_of_channels" in f.attrs:
+
+        original_number_of_channels = int(
+            f.attrs["original_number_of_channels"]
+        )
+
+    else:
+
+        original_number_of_channels = None
+
+
+# %%
+# ============================================================
+# DATA GEOMETRY
+# ============================================================
 
 n_channels, n_time = data.shape
+
 dt = 1.0 / fs
-time = np.arange(n_time) * dt
-distance = (distance_start + np.arange(n_channels) * dx)
+
+time = np.arange(
+    n_time
+) * dt
+
+
+# ------------------------------------------------------------
+# Local HDF5 row indices
+# ------------------------------------------------------------
+
+array_indices = np.arange(
+    n_channels,
+    dtype=int,
+)
+
+
+# ------------------------------------------------------------
+# Original DAS channel numbers
+# ------------------------------------------------------------
+
+channel_indices = (
+    original_channel_start
+    + array_indices
+)
+
+
+# ------------------------------------------------------------
+# Consistency check
+# ------------------------------------------------------------
+
+expected_channel_end = (
+    original_channel_start
+    + n_channels
+    - 1
+)
+
+if expected_channel_end != original_channel_end:
+
+    raise ValueError(
+        "Inconsistent channel metadata:\n"
+        f"original_channel_start = "
+        f"{original_channel_start}\n"
+        f"original_channel_end = "
+        f"{original_channel_end}\n"
+        f"n_channels = {n_channels}\n"
+        f"expected_channel_end = "
+        f"{expected_channel_end}"
+    )
+
+
+# ------------------------------------------------------------
+# Distance
+# ------------------------------------------------------------
+
+distance = (
+    distance_start
+    + array_indices * dx
+)
+
+
+duration_original = (
+    n_time / fs
+)
+
 
 print("\n=== PROCESSED DATA ===")
-print(f"Shape:               {data.shape}")
-print(f"Channels:            {n_channels}")
-print(f"Time samples:        {n_time}")
-print(f"Duration:            {time[-1]:.2f} s")
+
+print(
+    f"Shape:               {data.shape}"
+)
+
+print(
+    f"Channels in HDF5:    {n_channels}"
+)
+
+print(
+    f"Original channels:   "
+    f"{original_channel_start} - "
+    f"{original_channel_end}"
+)
+
+print(
+    f"Time samples:        {n_time}"
+)
+
+print(
+    f"Sampling frequency:  {fs:.3f} Hz"
+)
+
+print(
+    f"Duration:            "
+    f"{duration_original:.2f} s"
+)
+
 print(
     f"Distance:            "
     f"{distance[0] / 1e3:.2f} - "
     f"{distance[-1] / 1e3:.2f} km"
 )
 
-# %% Plot processed HDF5
-FigName = "DAS_time_distance_example"
-fig, ax = plt.subplots(figsize=(12, 6))
+print(
+    "\nChannel mapping:"
+)
+
+print(
+    f"data[0, :] -> "
+    f"channel {channel_indices[0]}"
+)
+
+print(
+    f"data[{n_channels - 1}, :] -> "
+    f"channel {channel_indices[-1]}"
+)
+
+
+# %%
+# ============================================================
+# PLOT PROCESSED HDF5
+# ============================================================
+
+fig, ax = plt.subplots(
+    figsize=(12, 6)
+)
+
 vmin, vmax = -0.5, 1.0
+
 im = ax.imshow(
     data,
     aspect="auto",
@@ -49,135 +222,58 @@ im = ax.imshow(
         time[0],
         time[-1],
         distance[0] / 1e3,
-        distance[-1] / 1e3
-    ]
+        distance[-1] / 1e3,
+    ],
 )
 
 ax.set_xlabel("Time [s]")
 ax.set_ylabel("Distance [km]")
+
 ax.set_title(
     datetime.fromtimestamp(
         unix_time_start,
-        tz=timezone.utc
-    ).strftime("%Y-%m-%dT%H:%M:%S.%f")[:22] + "Z"
+        tz=timezone.utc,
+    ).strftime(
+        "%Y-%m-%dT%H:%M:%S.%f"
+    )[:22] + "Z"
 )
 
-cbar = fig.colorbar(im, ax=ax)
-cbar.set_label("Strain")
+cbar = fig.colorbar(
+    im,
+    ax=ax,
+)
 
+cbar.set_label(
+    "Strain"
+)
+
+plt.tight_layout()
 plt.show()
 plt.close(fig)
+
+
 # %%
 # ============================================================
-# KVP SETUP (macOS / Apple Silicon)
-#
-# KVP requires the native OpenMP library libgomp.1.dylib.
-#
-# 1. Install GCC with Homebrew:
-#    $ brew install gcc
-#
-# 2. Locate libgomp:
-#    $ find /opt/homebrew -name "libgomp.1.dylib" 2>/dev/null
-#
-# 3. Add the GCC library path to KVP's native library:
-#    $ install_name_tool -add_rpath \
-#      /opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/16 \
-#      venv/lib/python3.11/site-packages/kvp/lib/libkvp-maco.so
-#
-# 4. Test the installation:
-#    $ python -c "from kvp import KVP; print('KVP OK')"
-#
-# If "KVP OK" is printed, KVP is correctly installed.
+# KVP CONFIGURATION
 # ============================================================
-# %% Testing KVP in a single DAS channel
-channel = 750  # test channel
-signal = data[channel, :]
-
-# Create ObsPy Trace from signal
-# tr = Trace(data=signal.astype(np.float64))
-# tr.stats.sampling_rate = fs
-# tr.stats.starttime = UTCDateTime(unix_time_start)
 
 fmin_filt = 19.0
 fmax_filt = 23.0
 nfilt = 6
 
-signal = SigFilt_HP(
-    signal,
-    fs,
-    nfilt,
-    fmin_filt
-)
+freqmax = 20.0
+octaves = 3
+voices = 4
+cf_cycles = 90.0
+jmp_cycles = 4.0
+jump = 2.0
+mingap = 3.0
+nbands = 4
 
-# Low-pass
-signal = SigFilt_LP(
-    signal,
-    fs,
-    nfilt,
-    fmax_filt
-)
+pad_seconds = 60.0
+noise_seed = 12345
 
-# Create ObsPy Trace from filtered signal
-tr = Trace(data=signal)
-tr.stats.sampling_rate = fs
-tr.stats.starttime = UTCDateTime(unix_time_start)
 
-print("\n=== KVP INPUT ===")
-print(f"Channel:       {channel}")
-print(f"Distance:      {distance[channel] / 1e3:.3f} km")
-print(f"Samples:       {tr.stats.npts}")
-print(f"Sampling rate: {tr.stats.sampling_rate:.2f} Hz")
-print(f"Start time:    {tr.stats.starttime}")
-
-# %% Plot single DAS channel
-fig, ax = plt.subplots(figsize=(12, 4))
-ax.plot(tr.times(),signal,linewidth=0.8)
-ax.set_xlabel("Time [s]")
-ax.set_ylabel("Strain")
-ax.set_title(f"DAS channel {channel} — {distance[channel] / 1e3:.3f} km")
-ax.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.show()
-plt.close(fig)
-
-Nfft = 128
-overlap = 0.7
-tspect, fspect, psd, info_spect = spectrogram_analysis_nfft(signal, fs, Nfft, overlap, plotter=False)
-_,tbin,fbin,fvalid,_ = info_spect
-tspect 
-
-flim_min, flim_max = 10,30
-fig = plt.figure(figsize=(10, 6))
-orig_map=plt.colormaps.get_cmap('jet')
-PSDmin = np.nanmin(psd[np.where((fspect >= fvalid))[0],:]) #dB
-PSDmax = np.nanmax(psd[np.where((fspect >= fvalid))[0],:]) #dB
-if max(fspect)<=5e3:
-    plt.pcolormesh(tspect, fspect, psd, cmap=orig_map, vmin=PSDmin, vmax=PSDmax)
-    # plt.axhline(fvalid,color='black',linestyle='--',linewidth=4)
-    plt.ylabel('Frequency [Hz]')
-    plt.ylim(flim_min, flim_max)
-else:
-    plt.pcolormesh(tspect, fspect*1e-3, psd, cmap=orig_map, vmin=PSDmin, vmax=PSDmax)
-    # plt.axhline(fvalid*1e-3,color='black',linestyle='--',linewidth=4)
-    plt.ylabel('Frequency [kHz]')
-    plt.ylim(flim_min*1e-3, flim_max*1e-3)
-plt.title(f'Channel {channel} | Distance = {distance[channel]/1e3:.1f} km\nNFFT={Nfft}, Overlap={int(overlap*100)}%')
-cbar = plt.colorbar()
-cbar.set_label('PSD [dB re 1A$^2$/Hz]', rotation=270, verticalalignment='baseline')
-plt.xlabel('Time [s]')
-plt.tight_layout()
-plt.show()
-
-# %% Run KVP on one DAS channel
-from kvp import KVP
-freqmax=20.0
-octaves=3
-voices=4
-cf_cycles=90.0
-jmp_cycles=4.0
-jump=2.0
-mingap=3.0
-nbands=4
 kvp_picker = KVP(
     freqmax=freqmax,
     octaves=octaves,
@@ -186,89 +282,124 @@ kvp_picker = KVP(
     jmp_cycles=jmp_cycles,
     jump=jump,
     mingap=mingap,
-    nbands=nbands
+    nbands=nbands,
 )
-picks = kvp_picker.obspy(tr)
-print("\n=== KVP PICKS ===")
-print(picks)
+
 
 # %%
-# Edge padding for KVP
-#
-# KVP computes kurtosis characteristic functions over finite time
-# windows whose duration increases towards the lowest-frequency bands.
-# For the frequency scales used in this workflow, these windows can
-# extend over several tens of seconds. Since the input DAS files
-# contain 60-s segments, events occurring close to the beginning
-# or end of a segment may be affected by boundary effects.
-#
-# To provide sufficient temporal context, each filtered trace is
-# extended by 60 s before and after the original H5 segment.
-#
-# The additional samples are synthetic zero-mean Gaussian noise.
-# Its standard deviation is estimated independently for each channel
-# from the filtered signal using a robust MAD-based estimator.
-#
-# KVP is then applied to the extended trace. After picking, only
-# detections whose onset falls within the original H5 time interval
-# are retained. Their times are referred back to the beginning of
-# the original H5 segment.
-#
-# The synthetic padding is used only to provide temporal context to
-# KVP and is never included in the final DAS visualization.
-# %% Función para añadir el ruido
+# ============================================================
+# TEST SINGLE CHANNEL
+# ============================================================
+
+channel = 750
+
+array_index = (
+    channel - original_channel_start
+)
+
+signal = data[
+    array_index,
+    :
+].astype(
+    np.float64
+)
+
+
+# %%
+# FILTER SINGLE CHANNEL
+# ============================================================
+
+signal = SigFilt_HP(
+    signal,
+    fs,
+    nfilt,
+    fmin_filt,
+)
+
+signal = SigFilt_LP(
+    signal,
+    fs,
+    nfilt,
+    fmax_filt,
+)
+
+
+# %%
+# PLOT FILTERED CHANNEL
+# ============================================================
+
+fig, ax = plt.subplots(
+    figsize=(12, 4)
+)
+
+ax.plot(
+    time,
+    signal,
+    linewidth=0.8,
+)
+
+ax.set_xlabel(
+    "Time [s]"
+)
+
+ax.set_ylabel(
+    "Strain"
+)
+
+ax.set_title(
+    f"DAS channel {channel} — "
+    f"{distance[array_index] / 1e3:.3f} km"
+)
+
+ax.grid(
+    True,
+    alpha=0.3,
+)
+
+plt.tight_layout()
+plt.show()
+plt.close(fig)
+
+
+# %%
+# ============================================================
+# ADD NOISE CONTEXT
+# ============================================================
+
 def add_noise_context(
     signal,
     fs,
     pad_seconds=60.0,
     seed=None,
 ):
-    """
-    Extend a 1-D signal with synthetic Gaussian noise before and after it.
 
-    The noise has zero mean and a channel-specific standard deviation
-    estimated from the signal using a robust MAD-based estimator.
-
-    Parameters
-    ----------
-    signal : np.ndarray
-        1-D filtered signal.
-    fs : float
-        Sampling frequency [Hz].
-    pad_seconds : float
-        Duration of synthetic noise added before and after the signal [s].
-    seed : int or None
-        Random seed for reproducible noise.
-
-    Returns
-    -------
-    signal_extended : np.ndarray
-        Signal with synthetic noise before and after.
-    sigma_noise : float
-        Estimated standard deviation used for the synthetic noise.
-    """
-
-    signal = np.asarray(signal, dtype=np.float64)
-
-    pad_samples = int(pad_seconds * fs)
-
-    # ----------------------------------------------------------
-    # Robust estimate of the background noise level
-    # ----------------------------------------------------------
-
-    median_signal = np.median(signal)
-
-    mad = np.median(
-        np.abs(signal - median_signal)
+    signal = np.asarray(
+        signal,
+        dtype=np.float64,
     )
 
-    sigma_noise = 1.4826 * mad
+    pad_samples = int(
+        pad_seconds * fs
+    )
 
-    # ----------------------------------------------------------
-    # Synthetic zero-mean Gaussian noise
-    # ----------------------------------------------------------
+    # Robust noise estimate
+    median_signal = np.median(
+        signal
+    )
 
-    rng = np.random.default_rng(seed)
+    mad = np.median(
+        np.abs(
+            signal - median_signal
+        )
+    )
+
+    sigma_noise = (
+        1.4826 * mad
+    )
+
+    rng = np.random.default_rng(
+        seed
+    )
 
     noise_before = rng.normal(
         loc=0.0,
@@ -282,19 +413,23 @@ def add_noise_context(
         size=pad_samples,
     )
 
-    # ----------------------------------------------------------
-    # Extended signal
-    # ----------------------------------------------------------
-
     signal_extended = np.concatenate([
         noise_before,
         signal,
         noise_after,
     ])
 
-    return signal_extended, sigma_noise
+    return (
+        signal_extended,
+        sigma_noise,
+    )
 
-# %% Función KVP para una sola señal
+
+# %%
+# ============================================================
+# RUN KVP ON ONE SIGNAL
+# ============================================================
+
 def run_kvp_signal(
     signal,
     fs,
@@ -302,46 +437,40 @@ def run_kvp_signal(
     channel,
     kvp_picker,
 ):
-    """
-    Run KVP on a single signal.
-
-    Parameters
-    ----------
-    signal : np.ndarray
-        Input signal.
-    fs : float
-        Sampling frequency [Hz].
-    starttime : float
-        POSIX start time of the trace.
-    channel : int
-        DAS channel number.
-    kvp_picker : KVP
-        Configured KVP picker.
-
-    Returns
-    -------
-    output : KVPOutput
-        KVP output for the input signal.
-    """
 
     tr = Trace(
-        data=np.asarray(signal, dtype=np.float64)
+        data=np.asarray(
+            signal,
+            dtype=np.float64,
+        )
     )
 
     tr.stats.sampling_rate = fs
-    tr.stats.starttime = UTCDateTime(starttime)
-    tr.stats.channel = f"CH{channel}"
 
-    output = kvp_picker.obspy(tr)
+    tr.stats.starttime = UTCDateTime(
+        starttime
+    )
 
-    return output
+    tr.stats.channel = (
+        f"CH{channel}"
+    )
+
+    return kvp_picker.obspy(
+        tr
+    )
+
 
 # %%
+# ============================================================
+# RUN KVP OVER ALL DAS CHANNELS
+# ============================================================
+
 def run_kvp_das(
     data,
     fs,
     distance,
     unix_time_start,
+    array_indices,
     channel_indices,
     kvp_picker,
     fmin_filt,
@@ -350,42 +479,43 @@ def run_kvp_das(
     pad_seconds=60.0,
     noise_seed=12345,
 ):
-    """
-    Run the complete KVP workflow over multiple DAS channels.
-
-    For each channel:
-
-    1. Extract the original DAS signal.
-    2. Apply the 19-23 Hz bandpass filter.
-    3. Add synthetic noise before and after the original segment.
-    4. Run KVP on the extended signal.
-    5. Convert KVP onset times back to the original H5 time axis.
-    6. Discard picks outside the original H5 interval.
-
-    The returned picks therefore always refer to the original
-    unpadded DAS segment.
-    """
 
     rows = []
 
-    duration_original = data.shape[1] / fs
+    duration_original = (
+        data.shape[1] / fs
+    )
 
-    n_channels_to_process = len(channel_indices)
+    n_channels_to_process = (
+        len(array_indices)
+    )
 
-    for i, channel in enumerate(channel_indices, start=1):
+    for i, (
+        array_index,
+        channel,
+    ) in enumerate(
+        zip(
+            array_indices,
+            channel_indices,
+        ),
+        start=1,
+    ):
 
-        # ======================================================
+        # ====================================================
         # Original signal
-        # ======================================================
+        # ====================================================
 
-        signal = data[channel, :].astype(np.float64)
+        signal = data[
+            array_index,
+            :
+        ].astype(
+            np.float64
+        )
 
-        # ======================================================
+        # ====================================================
         # Bandpass filtering
-        # ======================================================
+        # ====================================================
 
-        # Filter used for the detection of whale signals
-        # around ~20 Hz.
         signal = SigFilt_HP(
             signal,
             fs,
@@ -400,31 +530,37 @@ def run_kvp_das(
             fmax_filt,
         )
 
-        # ======================================================
-        # Add synthetic temporal context
-        # ======================================================
+        # ====================================================
+        # Synthetic temporal context
+        # ====================================================
 
-        # Use a channel-dependent seed so that the noise is
-        # reproducible and independent between channels.
-        channel_seed = noise_seed + int(channel)
-
-        signal_extended, sigma_noise = add_noise_context(
-            signal=signal,
-            fs=fs,
-            pad_seconds=pad_seconds,
-            seed=channel_seed,
+        channel_seed = (
+            noise_seed
+            + int(channel)
         )
 
-        # ======================================================
-        # Run KVP
-        # ======================================================
+        signal_extended, sigma_noise = (
+            add_noise_context(
+                signal=signal,
+                fs=fs,
+                pad_seconds=pad_seconds,
+                seed=channel_seed,
+            )
+        )
+
+        # ====================================================
+        # KVP
+        # ====================================================
 
         try:
 
             output = run_kvp_signal(
                 signal=signal_extended,
                 fs=fs,
-                starttime=unix_time_start - pad_seconds,
+                starttime=(
+                    unix_time_start
+                    - pad_seconds
+                ),
                 channel=channel,
                 kvp_picker=kvp_picker,
             )
@@ -432,124 +568,168 @@ def run_kvp_das(
         except Exception as e:
 
             print(
-                f"KVP failed on channel {channel}: {e}"
+                f"KVP failed on channel "
+                f"{channel}: {e}"
             )
 
             continue
 
-        if output is None or len(output) == 0:
+        if output is None:
             continue
 
-        # ======================================================
-        # Extract KVP picks
-        # ======================================================
+        if len(output) == 0:
+            continue
+
+        # ====================================================
+        # Extract picks
+        # ====================================================
 
         for pick in output:
 
-            # --------------------------------------------------
-            # Ignore completely invalid KVP picks
-            # --------------------------------------------------
-
             if not np.any(
-                pick.singlepicks["idx_ref"] >= 0
+                pick.singlepicks[
+                    "idx_ref"
+                ] >= 0
             ):
                 continue
-
-            # --------------------------------------------------
-            # Onset relative to the EXTENDED trace
-            # --------------------------------------------------
 
             time_extended = pick.onset(
                 posix=False
             )
 
-            # --------------------------------------------------
-            # Refer onset to the ORIGINAL H5 segment
-            #
-            # Extended trace:
-            #
-            #   60 s noise | 60 s original | 60 s noise
-            #              ^
-            #            t = 0
-            #
-            # --------------------------------------------------
+            time_rel = (
+                time_extended
+                - pad_seconds
+            )
 
-            time_rel = time_extended - pad_seconds
-
-            # --------------------------------------------------
-            # Keep only picks inside original H5
-            # --------------------------------------------------
+            # ------------------------------------------------
+            # Original H5 interval
+            # ------------------------------------------------
 
             if not (
-                0 <= time_rel < duration_original
+                0 <= time_rel
+                < duration_original
             ):
                 continue
 
-            # --------------------------------------------------
-            # Store detection
-            # --------------------------------------------------
+            # ------------------------------------------------
+            # Distance
+            # ------------------------------------------------
+
+            distance_km = (
+                distance[array_index]
+                / 1e3
+            )
 
             rows.append({
-                "Channel": channel,
-                "Distance_km": distance[channel] / 1e3,
-                "Number_bands": pick.nb,
-                "Lowest_band": pick.centralfreqs[0],
-                "Highest_band": pick.centralfreqs[-1],
-                "time_rel": time_rel,
-                "unix_time": unix_time_start + time_rel,
+
+                "Channel": int(
+                    channel
+                ),
+
+                "Distance_km": float(
+                    distance_km
+                ),
+
+                "Number_bands": int(
+                    pick.nb
+                ),
+
+                "Lowest_band": float(
+                    pick.centralfreqs[0]
+                ),
+
+                "Highest_band": float(
+                    pick.centralfreqs[-1]
+                ),
+
+                "time_rel": float(
+                    time_rel
+                ),
+
+                "unix_time": float(
+                    unix_time_start
+                    + time_rel
+                ),
             })
 
-        # ======================================================
+        # ====================================================
         # Progress
-        # ======================================================
+        # ====================================================
 
         if (
             i % 250 == 0
             or i == n_channels_to_process
         ):
+
             print(
                 f"Processed "
-                f"{i}/{n_channels_to_process} channels"
+                f"{i}/"
+                f"{n_channels_to_process} "
+                f"channels "
+                f"(original {channel})"
             )
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "Channel",
+            "Distance_km",
+            "Number_bands",
+            "Lowest_band",
+            "Highest_band",
+            "time_rel",
+            "unix_time",
+        ],
+    )
+
 
 # %%
-channel_indices = np.arange(n_channels)
+# ============================================================
+# RUN KVP
+# ============================================================
 
 df_picks = run_kvp_das(
     data=data,
     fs=fs,
     distance=distance,
     unix_time_start=unix_time_start,
+    array_indices=array_indices,
     channel_indices=channel_indices,
     kvp_picker=kvp_picker,
     fmin_filt=fmin_filt,
     fmax_filt=fmax_filt,
     nfilt=nfilt,
-    pad_seconds=60.0,
-    noise_seed=12345,
+    pad_seconds=pad_seconds,
+    noise_seed=noise_seed,
 )
-
-print("\n=== KVP DETECTIONS ===")
-print(df_picks)
 
 print(
-    f"\nTotal detections: {len(df_picks)}"
+    "\n=== KVP DETECTIONS ==="
 )
 
-# %%
-fig, ax = plt.subplots(figsize=(12, 6))
+print(
+    f"Total detections: "
+    f"{len(df_picks)}"
+)
 
-vmin, vmax = -0.5, 1.0
+
+# %%
+# ============================================================
+# PLOT KVP PICKS
+# ============================================================
+
+fig, ax = plt.subplots(
+    figsize=(12, 6)
+)
 
 im = ax.imshow(
     data,
     aspect="auto",
     origin="lower",
     cmap="gray",
-    vmin=vmin,
-    vmax=vmax,
+    vmin=-0.5,
+    vmax=1.0,
     extent=[
         time[0],
         time[-1],
@@ -568,8 +748,13 @@ ax.scatter(
     zorder=3,
 )
 
-ax.set_xlabel("Time [s]")
-ax.set_ylabel("Distance [km]")
+ax.set_xlabel(
+    "Time [s]"
+)
+
+ax.set_ylabel(
+    "Distance [km]"
+)
 
 ax.set_title(
     datetime.fromtimestamp(
@@ -580,104 +765,423 @@ ax.set_title(
     )[:22] + "Z"
 )
 
-cbar = fig.colorbar(im, ax=ax)
-cbar.set_label("Strain")
+cbar = fig.colorbar(
+    im,
+    ax=ax,
+)
+
+cbar.set_label(
+    "Strain"
+)
 
 ax.legend()
 
 plt.tight_layout()
 plt.show()
 plt.close(fig)
+
+
 # %%
-# Remove edge-affected picks at the end of the H5 segment
-#
-# The strong concentration of KVP picks during the final seconds
-# is interpreted as a boundary effect. Although temporal padding
-# is used to reduce edge effects and improve the detection of events
-# close to the beginning of the segment, detections very close to
-# the end of the original H5 interval remain affected by the finite
-# observation window.
-#
-# To avoid carrying these edge-related detections into the subsequent
-# analysis, we exclude the final 2 s of the original H5 segment.
-#
-# The DAS data itself is not modified; only the corresponding KVP
-# detections are removed.
+# ============================================================
+# REMOVE FINAL 2 SECONDS
+# ============================================================
 
 edge_time = 2.0
 
-# Duration of the original H5 segment
-duration_original = data.shape[1] / fs
-analysis_end = duration_original - edge_time
+analysis_end = (
+    duration_original
+    - edge_time
+)
 
-df_picks_clean = df_picks[
-    df_picks["time_rel"] < analysis_end
-].copy()
+df_picks_clean = (
+    df_picks[
+        df_picks["time_rel"]
+        < analysis_end
+    ]
+    .copy()
+)
 
-print("\n=== KVP PICKS AFTER EDGE REMOVAL ===")
+
 print(
-    f"Removed final {edge_time:.1f} s "
-    f"({analysis_end:.1f}–{duration_original:.1f} s)"
+    "\n=== FINAL CLEAN RESULTS ==="
 )
+
 print(
-    f"Picks before filtering: {len(df_picks)}"
+    f"Original duration: "
+    f"{duration_original:.3f} s"
 )
+
 print(
-    f"Picks after filtering:  {len(df_picks_clean)}"
+    f"Edge removed:      "
+    f"{edge_time:.3f} s"
 )
+
 print(
-    f"Picks removed:          "
+    f"Analysis end:      "
+    f"{analysis_end:.3f} s"
+)
+
+print(
+    f"Picks before:      "
+    f"{len(df_picks)}"
+)
+
+print(
+    f"Picks after:       "
+    f"{len(df_picks_clean)}"
+)
+
+print(
+    f"Picks removed:     "
     f"{len(df_picks) - len(df_picks_clean)}"
 )
+
+
 # %%
+# ============================================================
+# FINAL KVP PICKS
+# ============================================================
+
 df_picks = df_picks_clean
-fig, ax = plt.subplots(figsize=(12, 6))
 
-vmin, vmax = -0.5, 1.0
-
-im = ax.imshow(
-    data,
-    aspect="auto",
-    origin="lower",
-    cmap="gray",
-    vmin=vmin,
-    vmax=vmax,
-    extent=[
-        time[0],
-        time[-1],
-        distance[0] / 1e3,
-        distance[-1] / 1e3,
-    ],
+print(
+    "\n=== FINAL KVP PICKS ==="
 )
 
-ax.scatter(
-    df_picks["time_rel"],
-    df_picks["Distance_km"],
-    s=12,
-    c="red",
-    edgecolors="none",
-    label="KVP picks",
-    zorder=3,
+print(
+    df_picks
 )
 
-ax.set_xlabel("Time [s]")
-ax.set_ylabel("Distance [km]")
-
-ax.set_title(
-    datetime.fromtimestamp(
-        unix_time_start,
-        tz=timezone.utc,
-    ).strftime(
-        "%Y-%m-%dT%H:%M:%S.%f"
-    )[:22] + "Z"
+print(
+    "\nColumns:"
 )
 
-cbar = fig.colorbar(im, ax=ax)
-cbar.set_label("Strain")
+print(
+    df_picks.columns
+)
 
-ax.legend()
 
-plt.tight_layout()
-plt.show()
-plt.close(fig)
 # %%
+# ============================================================
+# SAVE CSV IN THE SAME DIRECTORY AS THE HDF5
+# ============================================================
+
+input_file = os.path.abspath(
+    file_path
+)
+
+input_stem = os.path.splitext(
+    os.path.basename(input_file)
+)[0]
+
+
+# ------------------------------------------------------------
+# Output filename
+# ------------------------------------------------------------
+
+output_filename = (
+    input_stem
+    + "_rawKVPpicks.csv"
+)
+
+
+# ------------------------------------------------------------
+# Save next to the input HDF5
+# ------------------------------------------------------------
+
+output_file = os.path.join(
+    os.path.dirname(input_file),
+    output_filename,
+)
+
+
+print(
+    f"\nSaving KVP picks to:\n"
+    f"{output_file}"
+)
+
+
+# %%
+# ============================================================
+# SAVE CSV WITH METADATA
+# ============================================================
+
+with open(
+    output_file,
+    "w",
+    encoding="utf-8",
+) as f:
+
+    # ========================================================
+    # File information
+    # ========================================================
+
+    f.write(
+        "# KVP PROCESSING METADATA\n"
+    )
+
+    f.write(
+        f"# input_file = "
+        f"{os.path.basename(input_file)}\n"
+    )
+
+    f.write(
+        f"# output_file = "
+        f"{output_filename}\n"
+    )
+
+    f.write(
+        "#\n"
+    )
+
+    # ========================================================
+    # Acquisition metadata
+    # ========================================================
+
+    f.write(
+        "# HDF5 ACQUISITION PARAMETERS\n"
+    )
+
+    f.write(
+        f"# sampling_frequency_Hz = "
+        f"{fs:.12g}\n"
+    )
+
+    f.write(
+        f"# spatial_sampling_m_per_channel = "
+        f"{dx:.12g}\n"
+    )
+
+    f.write(
+        f"# distance_start_m = "
+        f"{distance_start:.12g}\n"
+    )
+
+    f.write(
+        f"# number_of_channels_in_hdf5 = "
+        f"{n_channels}\n"
+    )
+
+    f.write(
+        f"# original_number_of_channels = "
+        f"{original_number_of_channels}\n"
+    )
+
+    f.write(
+        f"# number_of_time_samples = "
+        f"{n_time}\n"
+    )
+
+    f.write(
+        f"# original_duration_s = "
+        f"{duration_original:.12g}\n"
+    )
+
+    f.write(
+        f"# unix_time_start = "
+        f"{unix_time_start:.12g}\n"
+    )
+
+    f.write(
+        "#\n"
+    )
+
+    # ========================================================
+    # Spatial selection
+    # ========================================================
+
+    f.write(
+        "# SPATIAL CHANNEL SELECTION\n"
+    )
+
+    f.write(
+        "# Channel values in the CSV are ORIGINAL "
+        "HDF5/DAS channel indices.\n"
+    )
+
+    f.write(
+        f"# original_channel_start = "
+        f"{original_channel_start}\n"
+    )
+
+    f.write(
+        f"# original_channel_end = "
+        f"{original_channel_end}\n"
+    )
+
+    f.write(
+        f"# number_of_processed_channels = "
+        f"{n_channels}\n"
+    )
+
+    f.write(
+        "#\n"
+    )
+
+    # ========================================================
+    # Temporal selection
+    # ========================================================
+
+    f.write(
+        "# TEMPORAL ANALYSIS WINDOW\n"
+    )
+
+    f.write(
+        "# analysis_start_s = 0\n"
+    )
+
+    f.write(
+        f"# edge_time_removed_from_end_s = "
+        f"{edge_time:.12g}\n"
+    )
+
+    f.write(
+        f"# analysis_end_s = "
+        f"{analysis_end:.12g}\n"
+    )
+
+    f.write(
+        "#\n"
+    )
+
+    # ========================================================
+    # KVP parameters
+    # ========================================================
+
+    f.write(
+        "# KVP PICKER PARAMETERS\n"
+    )
+
+    f.write(
+        f"# fmin_filt_Hz = "
+        f"{fmin_filt:.12g}\n"
+    )
+
+    f.write(
+        f"# fmax_filt_Hz = "
+        f"{fmax_filt:.12g}\n"
+    )
+
+    f.write(
+        f"# filter_order = "
+        f"{nfilt}\n"
+    )
+
+    f.write(
+        f"# freqmax = "
+        f"{freqmax:.12g}\n"
+    )
+
+    f.write(
+        f"# octaves = "
+        f"{octaves}\n"
+    )
+
+    f.write(
+        f"# voices = "
+        f"{voices}\n"
+    )
+
+    f.write(
+        f"# cf_cycles = "
+        f"{cf_cycles:.12g}\n"
+    )
+
+    f.write(
+        f"# jmp_cycles = "
+        f"{jmp_cycles:.12g}\n"
+    )
+
+    f.write(
+        f"# jump = "
+        f"{jump:.12g}\n"
+    )
+
+    f.write(
+        f"# mingap = "
+        f"{mingap:.12g}\n"
+    )
+
+    f.write(
+        f"# nbands = "
+        f"{nbands}\n"
+    )
+
+    f.write(
+        "#\n"
+    )
+
+    # ========================================================
+    # Noise context
+    # ========================================================
+
+    f.write(
+        "# TEMPORAL NOISE CONTEXT\n"
+    )
+
+    f.write(
+        f"# pad_seconds = "
+        f"{pad_seconds:.12g}\n"
+    )
+
+    f.write(
+        f"# noise_seed = "
+        f"{noise_seed}\n"
+    )
+
+    f.write(
+        "#\n"
+    )
+
+    # ========================================================
+    # DATA
+    # ========================================================
+
+    f.write(
+        "# DATA\n"
+    )
+
+    df_picks.to_csv(
+        f,
+        index=False,
+        sep=";",
+    )
+
+
+print(
+    f"\nCSV saved to:\n"
+    f"{output_file}"
+)
+
+print(
+    f"Rows written: "
+    f"{len(df_picks)}"
+)
+
+
+# %%
+# ============================================================
+# OUTPUT
+# ============================================================
+
+print(
+    "\n========================================"
+)
+
+print(
+    " CSV SAVED"
+)
+
+print(
+    "========================================"
+)
+
+print(
+    f"\nCSV saved to:\n"
+    f"{output_file}"
+)
+
+print(
+    f"\nRows written: "
+    f"{len(df_picks)}"
+)
