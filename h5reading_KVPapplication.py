@@ -14,7 +14,7 @@ from src.signal_functions import (
 
 from kvp import KVP
 
-SCRIPT_NAME = "h5reading_KVPapplication"
+SCRIPT_NAME = "h5reading_KVPapplication.py"
 # %%
 # ============================================================
 # LOAD HDF5
@@ -906,6 +906,10 @@ print(
 # SAVE CSV WITH METADATA
 # ============================================================
 
+creation_date = datetime.now().strftime(
+    "%Y-%m-%d %H:%M:%S"
+)
+
 with open(
     output_file,
     "w",
@@ -921,12 +925,16 @@ with open(
     )
 
     f.write(
-        f"# input_file = "
+        f"# created by {SCRIPT_NAME} ({creation_date})\n"
+    )
+
+    f.write(
+        f"# input_file: "
         f"{os.path.basename(input_file)}\n"
     )
 
     f.write(
-        f"# output_file = "
+        f"# output_file: "
         f"{output_filename}\n"
     )
 

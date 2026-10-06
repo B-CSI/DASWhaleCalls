@@ -10,7 +10,6 @@ import pandas as pd
 from datetime import datetime
 
 from config.parameters import *
-from src.utils import *
 
 SCRIPT_NAME = "KVP_clustering_fitting_demo.py"
 # %% Load KVP picks
