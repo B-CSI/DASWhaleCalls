@@ -12,6 +12,7 @@ from tqdm import tqdm
 from config.parameters import *
 
 SCRIPT_NAME = "Note_localization_demo.py"
+plot_config = PlotConfig()
 # %% Load KVP picks
 csv_path = os.path.join(".","data_example","2024_01_13_07h57m34s_HDAS_SAFE_DASWhaleCalls_example_selectedKVPpicks.csv")
 KVP_selected_picks = pd.read_csv(csv_path,sep=";",comment="#")
@@ -144,36 +145,325 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     best_idx = np.where(Prob == np.max(Prob))[0][0]
     best_point = E_calc_xy_m[best_idx, :]
 
-    fig = plt.figure(figsize=(8,6))
-    sc = plt.scatter(E_calc_xy_m[:,0],E_calc_xy_m[:,1],c=Prob,cmap='viridis',marker='s')
-    plt.plot(CSVfile_cable_data['X[m]'], CSVfile_cable_data['Y[m]'],
-                color='red', linestyle='-', linewidth=2,
-                label='DAS interrogation')
-    plt.plot(best_point[0], best_point[1],color='red', marker='*', linestyle='',
-                label=f'Best: {Prob[best_idx]:.3f}')
-    # plt.plot(central_point_m[0]+maxX, central_point_m[1]+maxY,color='lime', marker='o', linestyle='')
-    # plt.plot(central_point_m[0]+minX, central_point_m[1]+minY,color='lime', marker='o', linestyle='')
-    # plt.plot(central_point_m[0]+maxX, central_point_m[1]+minY,color='lime', marker='o', linestyle='')
-    # plt.plot(central_point_m[0]+minX, central_point_m[1]+maxY,color='lime', marker='o', linestyle='')
-    cbar = plt.colorbar(sc)
-    cbar.set_label('Probability',rotation=270,labelpad=15)
-    plt.xlim(np.min(E_calc_xy_m[:, 0]),np.max(E_calc_xy_m[:, 0]))
-    plt.ylim(np.min(E_calc_xy_m[:, 1]),np.max(E_calc_xy_m[:, 1]))
-    plt.xlabel('X [m]')
-    plt.ylabel('Y [m]')
-    plt.grid(True, alpha=0.3)
-    # plt.legend(ncols=3)
-    plt.title(f"Cluster: {cluster}\nGrid: {len(E_calc_xy_m)} samples; dx: {dx_res}m; dy: {dy_res}m\n[$\pm${np.abs(int(maxX))},$\pm${np.abs(int(maxY))}]m")
-    # plt.axis('equal')
+    # Residuals at the best localization point
+    T_calc_best = T_calc_s[:, best_idx]
+    misfit, best_shift, inliers = localization_misfit(
+        T_obs_s,
+        T_calc_best,
+        fs=fs,
+        n_sigma=n_sigma_terr
+    )
+    # Residual = calculated - observed (after optimal time shift)
+    residuals = T_calc_best - (T_obs_s - best_shift)
+    # Horizontal bar plot
+    inlier_mask = np.zeros(len(R_obs_id), dtype=bool)
+    inlier_mask[inliers] = True
+
+    # Figure: Time residuals at best localization point
+    fig, axes = plt.subplots(1,2,figsize=(12, 6),sharey=True)
+    ax = axes[0]
+    y = np.arange(len(R_obs_id))
+    # All channels: inliers + outliers
+    ax.barh(
+        y[inlier_mask],
+        residuals[inlier_mask] * 1000,
+        height=0.7,
+        label="Inliers",
+    )
+    ax.barh(
+        y[~inlier_mask],
+        residuals[~inlier_mask] * 1000,
+        height=0.7,
+        label="Outliers",
+    )
+    ax.axvline(
+        0,
+        color="black",
+        linestyle="--",
+        linewidth=1,
+    )
+    # Figure formatting.
+    ax.set_title(
+        f"All channels\n"
+        f"Shift = {best_shift*1000:.2f} ms | "
+        f"Misfit = {misfit*1000:.2f} ms",
+        fontsize=plot_config.title_size,
+        fontweight="bold",
+    )
+    ax.set_xlabel(
+        "T_calc - T_obs [ms]",
+        fontsize=plot_config.label_size,
+    )
+    ax.set_ylabel(
+        "Channel",
+        fontsize=plot_config.label_size,
+    )
+    ax.tick_params(
+        axis="both",
+        which="major",
+        labelsize=plot_config.tick_size,
+    )
+    ax.tick_params(
+        axis="both",
+        which="minor",
+        labelsize=plot_config.tick_size,
+    )
+    ax.grid(
+        True,
+        linewidth=plot_config.grid_width,
+        alpha=plot_config.grid_alpha,
+    )
+    ax.legend()
+    # Only inliers.
+    ax = axes[1]
+    ax.barh(
+        y[inlier_mask],
+        residuals[inlier_mask] * 1000,
+        height=0.7,
+        color="tab:blue",
+    )
+    ax.axvline(
+        0,
+        color="black",
+        linestyle="--",
+        linewidth=1,
+    )
+    # Figure formatting.
+    ax.set_title(
+        "Inliers only",
+        fontsize=plot_config.title_size,
+        fontweight="bold",
+    )
+    ax.set_xlabel(
+        "T_calc - T_obs [ms]",
+        fontsize=plot_config.label_size,
+    )
+    ax.tick_params(
+        axis="both",
+        which="major",
+        labelsize=plot_config.tick_size,
+    )
+    ax.tick_params(
+        axis="both",
+        which="minor",
+        labelsize=plot_config.tick_size,
+    )
+    ax.grid(
+        True,
+        linewidth=plot_config.grid_width,
+        alpha=plot_config.grid_alpha,
+    )
     plt.tight_layout()
-    # plt.show()
     fig.savefig(
-        os.path.join(output_results, f"DASpos_{int(cluster)}.png"),
+        os.path.join(
+            output_results,
+            f"DASpos_residuals_{int(cluster)}.png",
+        ),
         dpi=150,
         bbox_inches="tight",
     )
+    plt.show()
     plt.close(fig)
-    plt.close('all')
+
+    # Figure: times and residuals
+    fig, axes = plt.subplots(1,2,figsize=(12, 6),sharey=True)
+    # LEFT AXIS: observed vs calculated times
+    ax = axes[0]
+    # Observed times
+    ax.plot(
+        T_obs_s[inlier_mask],
+        y[inlier_mask],
+        linestyle="",
+        marker="x",
+        markersize=6,
+        markeredgewidth=1.5,
+        color="tab:blue",
+        label="Observed",
+    )
+    # Calculated times
+    ax.plot(
+        T_calc_best,
+        y,
+        linestyle="-",
+        marker="",
+        color="black",
+        label="Calculated",
+    )
+    # Figure formatting.
+    ax.set_title(
+        "Observed vs calculated",
+        fontsize=plot_config.title_size,
+        fontweight="bold",
+    )
+    ax.set_xlabel(
+        "Time [s]",
+        fontsize=plot_config.label_size,
+    )
+    ax.set_ylabel(
+        "Channel",
+        fontsize=plot_config.label_size,
+    )
+    ax.tick_params(
+        axis="both",
+        which="major",
+        labelsize=plot_config.tick_size,
+    )
+    ax.tick_params(
+        axis="both",
+        which="minor",
+        labelsize=plot_config.tick_size,
+    )
+    ax.grid(
+        True,
+        linewidth=plot_config.grid_width,
+        alpha=plot_config.grid_alpha,
+    )
+    ax.legend()
+    # RIGHT AXIS: residuals
+    ax = axes[1]
+    # Inliers
+    ax.barh(
+        y[inlier_mask],
+        residuals[inlier_mask] * 1000,
+        height=0.7,
+        color="tab:blue",
+        label="Inliers",
+    )
+    ax.axvline(
+        0,
+        color="black",
+        linestyle="--",
+        linewidth=1,
+    )
+    ax.set_title(
+        f"Time residuals\n"
+        f"Shift = {best_shift*1000:.2f} ms | "
+        f"Misfit = {misfit*1000:.2f} ms",
+        fontsize=plot_config.title_size,
+        fontweight="bold",
+    )
+    ax.set_xlabel(
+        "T_calc - T_obs [ms]",
+        fontsize=plot_config.label_size,
+    )
+    ax.tick_params(
+        axis="both",
+        which="major",
+        labelsize=plot_config.tick_size,
+    )
+    ax.tick_params(
+        axis="both",
+        which="minor",
+        labelsize=plot_config.tick_size,
+    )
+    ax.grid(
+        True,
+        linewidth=plot_config.grid_width,
+        alpha=plot_config.grid_alpha,
+    )
+    ax.legend()
+    plt.tight_layout()
+    fig.savefig(
+        os.path.join(
+            output_results,
+            f"DASpos_times_residuals_{int(cluster)}.png",
+        ),
+        dpi=150,
+        bbox_inches="tight",
+    )
+    plt.show()
+    plt.close(fig)
+
+
+    # Figure: Localization probability
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sc = ax.scatter(
+        E_calc_xy_m[:, 0],
+        E_calc_xy_m[:, 1],
+        c=Prob,
+        cmap="viridis",
+        marker="s",
+    )
+    ax.plot(
+        CSVfile_cable_data["X[m]"],
+        CSVfile_cable_data["Y[m]"],
+        color="red",
+        linestyle="-",
+        linewidth=2,
+        label="DAS interrogation",
+    )
+    ax.plot(
+        best_point[0],
+        best_point[1],
+        color="red",
+        marker="*",
+        linestyle="",
+        label=f"Best: {Prob[best_idx]:.3f}",
+    )
+    cbar = fig.colorbar(sc, ax=ax)
+    cbar.set_label(
+        "Probability",
+        rotation=270,
+        labelpad=15,
+        fontsize=plot_config.label_size,
+    )
+    cbar.ax.tick_params(
+        labelsize=plot_config.tick_size,
+    )
+    ax.set_xlim(
+        np.min(E_calc_xy_m[:, 0]),
+        np.max(E_calc_xy_m[:, 0]),
+    )
+    ax.set_ylim(
+        np.min(E_calc_xy_m[:, 1]),
+        np.max(E_calc_xy_m[:, 1]),
+    )
+    # Figure formatting.
+    ax.set_title(
+        f"Cluster: {cluster}\n"
+        f"Grid: {len(E_calc_xy_m)} samples; "
+        f"dx: {dx_res}m; dy: {dy_res}m\n"
+        f"[$\\pm${np.abs(int(maxX))},"
+        f"$\\pm${np.abs(int(maxY))}]m",
+        fontsize=plot_config.title_size,
+        fontweight="bold",
+    )
+    ax.set_xlabel(
+        "X [m]",
+        fontsize=plot_config.label_size,
+    )
+    ax.set_ylabel(
+        "Y [m]",
+        fontsize=plot_config.label_size,
+    )
+    ax.tick_params(
+        axis="both",
+        which="major",
+        labelsize=plot_config.tick_size,
+    )
+    ax.tick_params(
+        axis="both",
+        which="minor",
+        labelsize=plot_config.tick_size,
+    )
+    ax.grid(
+        True,
+        linewidth=plot_config.grid_width,
+        alpha=plot_config.grid_alpha,
+    )
+    ax.set_aspect("equal", adjustable="box")
+    plt.tight_layout()
+    fig.savefig(
+        os.path.join(
+            output_results,
+            f"DASpos_{int(cluster)}.png",
+        ),
+        dpi=150,
+        bbox_inches="tight",
+    )
+    plt.show()
+    plt.close(fig)
+    plt.close("all")
 
     E_calc_x_m, E_calc_y_m = E_calc_xy_m[:,0], E_calc_xy_m[:,1]
     best_results = {
@@ -190,12 +480,11 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     }
     if best_results is not None:
         Results_df.append(best_results)
-
         # Output data saved as one CSV per cluster
-        CSVbase = os.path.basename(CSVfile).split('.')[0]
+        CSVbase = os.path.basename(csv_path).split('.')[0]
         CSVname = f"{CSVbase}_DASpos_cluster{int(cluster)}.csv"
         metadata = [
-            f"# Input: {os.path.basename(CSVfile)}",
+            f"# Input: {os.path.basename(csv_path)}",
             f"# Output: {CSVname}",
             "# ----------------------------------------",
             "# Local tangent plane projection, Units: meters",
@@ -223,3 +512,5 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         print('%s created!' % CSVname)
 
 Results_df = pd.DataFrame(Results_df, columns=Results_df_columns)
+
+# %%
