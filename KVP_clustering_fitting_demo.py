@@ -128,6 +128,8 @@ y0_tolerance = 2000.0        # Allowed deviation from target y0 [m]
 min_cluster_Xsize = 0.5      # Minimum cluster width [s]
 max_cluster_Ysize = 10000.0   # Maximum cluster height [m]
 
+FILTRAR PER PENDENT DE LA RECTA EVITAR HORITZONTALS??
+FILTRE FÍSIC
 # Boolean mask for clusters satisfying all criteria.
 cluster_selection_mask = (
     (KVP_Hfitted_picks["cluster_Xsize"] >= min_cluster_Xsize)
