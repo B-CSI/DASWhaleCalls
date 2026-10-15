@@ -1,3 +1,7 @@
+# %% 
+TO SOLVE:
+- METADATA IN CSV FILE: INCLUDE THE FILE NAMES 
+- CSV FILE NAME
 # %%
 import h5py
 import os
