@@ -17,186 +17,159 @@ from kvp import KVP
 SCRIPT_NAME = "h5reading_KVPapplication.py"
 # %%
 # ============================================================
-# LOAD HDF5
+# LOAD AND CONCATENATE TWO HDF5 FILES
 # ============================================================
-
-file_path = os.path.join(
+file_1 = os.path.join(
     ".",
     "data_example",
     "2024_01_13_07h57m34s_HDAS_SAFE_DASWhaleCalls_example.h5",
 )
+file_2 = os.path.join(
+    ".",
+    "data_example",
+    "2024_01_13_07h58m34s_HDAS_SAFE_DASWhaleCalls_example.h5",
+)
 
-with h5py.File(file_path, "r") as f:
 
-    # --------------------------------------------------------
-    # Data
-    # --------------------------------------------------------
+def read_h5(path):
 
-    data = f["data"][:]
+    with h5py.File(path, "r") as f:
 
-    # --------------------------------------------------------
-    # Acquisition metadata
-    # --------------------------------------------------------
+        result = {
+            "data": f["data"][:],
+            "fs": float(f.attrs["sampling_frequency"]),
+            "dx": float(f.attrs["spatial_sampling"]),
+            "unix_time_start": float(f.attrs["unix_time_start"]),
+            "distance_start": float(f.attrs["distance_start"]),
+            "channel_start": int(f.attrs["original_channel_start"]),
+            "channel_end": int(f.attrs["original_channel_end"]),
+            "original_number_of_channels": (
+                int(f.attrs["original_number_of_channels"])
+                if "original_number_of_channels" in f.attrs
+                else None
+            ),
+        }
 
-    fs = float(
-        f.attrs["sampling_frequency"]
-    )
+    return result
 
-    dx = float(
-        f.attrs["spatial_sampling"]
-    )
 
-    unix_time_start = float(
-        f.attrs["unix_time_start"]
-    )
+h5_1 = read_h5(file_1)
+h5_2 = read_h5(file_2)
 
-    distance_start = float(
-        f.attrs["distance_start"]
-    )
+# ============================================================
+# VALIDATE METADATA
+# ============================================================
 
-    # --------------------------------------------------------
-    # Original channel metadata
-    # --------------------------------------------------------
-
-    original_channel_start = int(
-        f.attrs["original_channel_start"]
-    )
-
-    original_channel_end = int(
-        f.attrs["original_channel_end"]
-    )
-
-    if "original_number_of_channels" in f.attrs:
-
-        original_number_of_channels = int(
-            f.attrs["original_number_of_channels"]
+for key in (
+    "fs",
+    "dx",
+    "distance_start",
+    "channel_start",
+    "channel_end",
+):
+    if not np.isclose(h5_1[key], h5_2[key]):
+        raise ValueError(
+            f"Incompatible HDF5 metadata: {key}\n"
+            f"File 1: {h5_1[key]}\n"
+            f"File 2: {h5_2[key]}"
         )
 
-    else:
+if h5_1["data"].shape[0] != h5_2["data"].shape[0]:
+    raise ValueError("The H5 files have different channel counts.")
 
-        original_number_of_channels = None
+if h5_1["data"].shape[0] != (
+    h5_1["channel_end"] - h5_1["channel_start"] + 1
+):
+    raise ValueError("File 1 channel metadata is inconsistent.")
 
+if h5_2["data"].shape[0] != (
+    h5_2["channel_end"] - h5_2["channel_start"] + 1
+):
+    raise ValueError("File 2 channel metadata is inconsistent.")
 
-# %%
 # ============================================================
-# DATA GEOMETRY
+# VALIDATE TEMPORAL CONTINUITY
 # ============================================================
+
+fs = h5_1["fs"]
+
+n_samples_1 = h5_1["data"].shape[1]
+n_samples_2 = h5_2["data"].shape[1]
+
+expected_start_2 = (
+    h5_1["unix_time_start"] + n_samples_1 / fs
+)
+
+time_error = (
+    h5_2["unix_time_start"] - expected_start_2
+)
+
+tolerance = 0.5 / fs  # half a sample
+
+if abs(time_error) > tolerance:
+    raise ValueError(
+        "The H5 files are not temporally contiguous.\n"
+        f"Expected second start: {expected_start_2:.9f}\n"
+        f"Actual second start:   {h5_2['unix_time_start']:.9f}\n"
+        f"Difference:            {time_error:.9f} s"
+    )
+
+# ============================================================
+# CONCATENATE ALONG TIME AXIS
+# ============================================================
+
+data = np.concatenate(
+    [h5_1["data"], h5_2["data"]],
+    axis=1,
+)
+
+# Keep the first file's acquisition reference
+unix_time_start = h5_1["unix_time_start"]
+dx = h5_1["dx"]
+distance_start = h5_1["distance_start"]
+
+original_channel_start = h5_1["channel_start"]
+original_channel_end = h5_1["channel_end"]
+original_number_of_channels = (
+    h5_1["original_number_of_channels"]
+)
 
 n_channels, n_time = data.shape
 
 dt = 1.0 / fs
+time = np.arange(n_time) * dt
 
-time = np.arange(
-    n_time
-) * dt
-
-
-# ------------------------------------------------------------
-# Local HDF5 row indices
-# ------------------------------------------------------------
-
-array_indices = np.arange(
-    n_channels,
-    dtype=int,
-)
-
-
-# ------------------------------------------------------------
-# Original DAS channel numbers
-# ------------------------------------------------------------
+array_indices = np.arange(n_channels, dtype=int)
 
 channel_indices = (
-    original_channel_start
-    + array_indices
+    original_channel_start + array_indices
 )
-
-
-# ------------------------------------------------------------
-# Consistency check
-# ------------------------------------------------------------
-
-expected_channel_end = (
-    original_channel_start
-    + n_channels
-    - 1
-)
-
-if expected_channel_end != original_channel_end:
-
-    raise ValueError(
-        "Inconsistent channel metadata:\n"
-        f"original_channel_start = "
-        f"{original_channel_start}\n"
-        f"original_channel_end = "
-        f"{original_channel_end}\n"
-        f"n_channels = {n_channels}\n"
-        f"expected_channel_end = "
-        f"{expected_channel_end}"
-    )
-
-
-# ------------------------------------------------------------
-# Distance
-# ------------------------------------------------------------
 
 distance = (
-    distance_start
-    + array_indices * dx
+    distance_start + array_indices * dx
 )
 
+duration_original = n_time / fs
 
-duration_original = (
-    n_time / fs
-)
-
-
-print("\n=== PROCESSED DATA ===")
-
+print("\n=== CONCATENATED HDF5 ===")
+print(f"File 1: {os.path.basename(file_1)}")
+print(f"File 2: {os.path.basename(file_2)}")
+print(f"Combined shape: {data.shape}")
+print(f"Sampling frequency: {fs:.6f} Hz")
+print(f"Duration: {duration_original:.3f} s")
+print(f"Temporal offset error: {time_error:.9f} s")
 print(
-    f"Shape:               {data.shape}"
+    "Start UTC:",
+    datetime.fromtimestamp(
+        unix_time_start, tz=timezone.utc
+    ).isoformat(),
 )
-
 print(
-    f"Channels in HDF5:    {n_channels}"
-)
-
-print(
-    f"Original channels:   "
-    f"{original_channel_start} - "
-    f"{original_channel_end}"
-)
-
-print(
-    f"Time samples:        {n_time}"
-)
-
-print(
-    f"Sampling frequency:  {fs:.3f} Hz"
-)
-
-print(
-    f"Duration:            "
-    f"{duration_original:.2f} s"
-)
-
-print(
-    f"Distance:            "
-    f"{distance[0] / 1e3:.2f} - "
-    f"{distance[-1] / 1e3:.2f} km"
-)
-
-print(
-    "\nChannel mapping:"
-)
-
-print(
-    f"data[0, :] -> "
-    f"channel {channel_indices[0]}"
-)
-
-print(
-    f"data[{n_channels - 1}, :] -> "
-    f"channel {channel_indices[-1]}"
+    "End UTC:",
+    datetime.fromtimestamp(
+        unix_time_start + duration_original,
+        tz=timezone.utc,
+    ).isoformat(),
 )
 
 
@@ -269,10 +242,6 @@ jmp_cycles = 4.0
 jump = 2.0
 mingap = 3.0
 nbands = 4
-
-pad_seconds = 60.0
-noise_seed = 12345
-
 
 kvp_picker = KVP(
     freqmax=freqmax,
@@ -360,71 +329,6 @@ plt.tight_layout()
 plt.show()
 plt.close(fig)
 
-
-# %%
-# ============================================================
-# ADD NOISE CONTEXT
-# ============================================================
-
-def add_noise_context(
-    signal,
-    fs,
-    pad_seconds=60.0,
-    seed=None,
-):
-
-    signal = np.asarray(
-        signal,
-        dtype=np.float64,
-    )
-
-    pad_samples = int(
-        pad_seconds * fs
-    )
-
-    # Robust noise estimate
-    median_signal = np.median(
-        signal
-    )
-
-    mad = np.median(
-        np.abs(
-            signal - median_signal
-        )
-    )
-
-    sigma_noise = (
-        1.4826 * mad
-    )
-
-    rng = np.random.default_rng(
-        seed
-    )
-
-    noise_before = rng.normal(
-        loc=0.0,
-        scale=sigma_noise,
-        size=pad_samples,
-    )
-
-    noise_after = rng.normal(
-        loc=0.0,
-        scale=sigma_noise,
-        size=pad_samples,
-    )
-
-    signal_extended = np.concatenate([
-        noise_before,
-        signal,
-        noise_after,
-    ])
-
-    return (
-        signal_extended,
-        sigma_noise,
-    )
-
-
 # %%
 # ============================================================
 # RUN KVP ON ONE SIGNAL
@@ -476,198 +380,72 @@ def run_kvp_das(
     fmin_filt,
     fmax_filt,
     nfilt,
-    pad_seconds=60.0,
-    noise_seed=12345,
 ):
 
     rows = []
 
-    duration_original = (
-        data.shape[1] / fs
-    )
+    duration_original = data.shape[1] / fs
+    n_channels_to_process = len(array_indices)
 
-    n_channels_to_process = (
-        len(array_indices)
-    )
-
-    for i, (
-        array_index,
-        channel,
-    ) in enumerate(
-        zip(
-            array_indices,
-            channel_indices,
-        ),
+    for i, (array_index, channel) in enumerate(
+        zip(array_indices, channel_indices),
         start=1,
     ):
 
-        # ====================================================
-        # Original signal
-        # ====================================================
+        signal = data[array_index, :].astype(np.float64)
 
-        signal = data[
-            array_index,
-            :
-        ].astype(
-            np.float64
-        )
-
-        # ====================================================
-        # Bandpass filtering
-        # ====================================================
-
+        # Filter the complete concatenated signal
         signal = SigFilt_HP(
-            signal,
-            fs,
-            nfilt,
-            fmin_filt,
+            signal, fs, nfilt, fmin_filt
         )
 
         signal = SigFilt_LP(
-            signal,
-            fs,
-            nfilt,
-            fmax_filt,
+            signal, fs, nfilt, fmax_filt
         )
 
-        # ====================================================
-        # Synthetic temporal context
-        # ====================================================
-
-        channel_seed = (
-            noise_seed
-            + int(channel)
-        )
-
-        signal_extended, sigma_noise = (
-            add_noise_context(
+        # Run KVP using real data only
+        try:
+            output = run_kvp_signal(
                 signal=signal,
                 fs=fs,
-                pad_seconds=pad_seconds,
-                seed=channel_seed,
-            )
-        )
-
-        # ====================================================
-        # KVP
-        # ====================================================
-
-        try:
-
-            output = run_kvp_signal(
-                signal=signal_extended,
-                fs=fs,
-                starttime=(
-                    unix_time_start
-                    - pad_seconds
-                ),
+                starttime=unix_time_start,
                 channel=channel,
                 kvp_picker=kvp_picker,
             )
 
         except Exception as e:
-
-            print(
-                f"KVP failed on channel "
-                f"{channel}: {e}"
-            )
-
+            print(f"KVP failed on channel {channel}: {e}")
             continue
 
-        if output is None:
+        if output is None or len(output) == 0:
             continue
-
-        if len(output) == 0:
-            continue
-
-        # ====================================================
-        # Extract picks
-        # ====================================================
 
         for pick in output:
 
             if not np.any(
-                pick.singlepicks[
-                    "idx_ref"
-                ] >= 0
+                pick.singlepicks["idx_ref"] >= 0
             ):
                 continue
 
-            time_extended = pick.onset(
-                posix=False
-            )
+            time_rel = float(pick.onset(posix=False))
 
-            time_rel = (
-                time_extended
-                - pad_seconds
-            )
-
-            # ------------------------------------------------
-            # Original H5 interval
-            # ------------------------------------------------
-
-            if not (
-                0 <= time_rel
-                < duration_original
-            ):
+            # Keep picks inside the concatenated interval
+            if not (0 <= time_rel < duration_original):
                 continue
-
-            # ------------------------------------------------
-            # Distance
-            # ------------------------------------------------
-
-            distance_km = (
-                distance[array_index]
-                / 1e3
-            )
 
             rows.append({
-
-                "Channel": int(
-                    channel
-                ),
-
-                "Distance_km": float(
-                    distance_km
-                ),
-
-                "Number_bands": int(
-                    pick.nb
-                ),
-
-                "Lowest_band": float(
-                    pick.centralfreqs[0]
-                ),
-
-                "Highest_band": float(
-                    pick.centralfreqs[-1]
-                ),
-
-                "time_rel": float(
-                    time_rel
-                ),
-
-                "unix_time": float(
-                    unix_time_start
-                    + time_rel
-                ),
+                "Channel": int(channel),
+                "Distance_km": float(distance[array_index] / 1e3),
+                "Number_bands": int(pick.nb),
+                "Lowest_band": float(pick.centralfreqs[0]),
+                "Highest_band": float(pick.centralfreqs[-1]),
+                "time_rel": time_rel,
+                "unix_time": float(unix_time_start + time_rel),
             })
-
-        # ====================================================
-        # Progress
-        # ====================================================
-
-        if (
-            i % 250 == 0
-            or i == n_channels_to_process
-        ):
-
+        if i % 250 == 0 or i == n_channels_to_process:
             print(
-                f"Processed "
-                f"{i}/"
-                f"{n_channels_to_process} "
-                f"channels "
-                f"(original {channel})"
+                f"Processed {i}/{n_channels_to_process} "
+                f"channels (original {channel})"
             )
 
     return pd.DataFrame(
@@ -682,7 +460,6 @@ def run_kvp_das(
             "unix_time",
         ],
     )
-
 
 # %%
 # ============================================================
@@ -700,18 +477,27 @@ df_picks = run_kvp_das(
     fmin_filt=fmin_filt,
     fmax_filt=fmax_filt,
     nfilt=nfilt,
-    pad_seconds=pad_seconds,
-    noise_seed=noise_seed,
 )
 
-print(
-    "\n=== KVP DETECTIONS ==="
-)
+print("\n=== KVP DEBUG ===")
+print("Concatenated HDF5 shape:", data.shape)
+print("Total duration:", duration_original)
+print("Number of picks:", len(df_picks))
 
-print(
-    f"Total detections: "
-    f"{len(df_picks)}"
-)
+if not df_picks.empty:
+    print(df_picks.head(10))
+    print(
+        "Time range:",
+        df_picks["time_rel"].min(),
+        df_picks["time_rel"].max(),
+    )
+    print(
+        "Spatial range:",
+        df_picks["Distance_km"].min(),
+        df_picks["Distance_km"].max(),
+    )
+else:
+    print("KVP DID NOT RETURN ANY PICKS.")
 
 
 # %%
@@ -866,34 +652,18 @@ print(
 # SAVE CSV IN THE SAME DIRECTORY AS THE HDF5
 # ============================================================
 
-input_file = os.path.abspath(
-    file_path
-)
+input_file = os.path.abspath(file_1)
 
-input_stem = os.path.splitext(
-    os.path.basename(input_file)
-)[0]
-
-
-# ------------------------------------------------------------
 # Output filename
-# ------------------------------------------------------------
-
 output_filename = (
-    input_stem
-    + "_rawKVPpicks.csv"
+    os.path.splitext(os.path.basename(file_1))[0]
+    + ".csv"
 )
-
-
-# ------------------------------------------------------------
-# Save next to the input HDF5
-# ------------------------------------------------------------
 
 output_file = os.path.join(
-    os.path.dirname(input_file),
+    os.path.dirname(os.path.abspath(file_1)),
     output_filename,
 )
-
 
 print(
     f"\nSaving KVP picks to:\n"
@@ -1127,15 +897,12 @@ with open(
         "# TEMPORAL NOISE CONTEXT\n"
     )
 
-    f.write(
-        f"# pad_seconds = "
-        f"{pad_seconds:.12g}\n"
-    )
-
-    f.write(
-        f"# noise_seed = "
-        f"{noise_seed}\n"
-    )
+    f.write("# TEMPORAL CONTEXT\n")
+    f.write("# context_source = adjacent real HDF5 recording\n")
+    f.write(f"# concatenated_file_1 = {os.path.basename(file_1)}\n")
+    f.write(f"# concatenated_file_2 = {os.path.basename(file_2)}\n")
+    f.write("# synthetic_noise_padding = disabled\n")
+    f.write("#\n")
 
     f.write(
         "#\n"
@@ -1188,8 +955,4 @@ print(
     f"\nCSV saved to:\n"
     f"{output_file}"
 )
-
-print(
-    f"\nRows written: "
-    f"{len(df_picks)}"
-)
+# %%
