@@ -14,6 +14,7 @@ import pandas as pd
 from src.signal_functions import (
     SigFilt_HP,
     SigFilt_LP,
+    CMremover
 )
 
 from kvp import KVP
@@ -397,6 +398,9 @@ def run_kvp_das(
     ):
 
         signal = data[array_index, :].astype(np.float64)
+
+        # Filter the complete concatenated signal
+        signal, _ = CMremover(signal)
 
         # Filter the complete concatenated signal
         signal = SigFilt_HP(
