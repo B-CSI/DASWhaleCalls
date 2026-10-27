@@ -13,7 +13,7 @@ from config.parameters import *
 
 SCRIPT_NAME = "KVP_clustering_fitting_demo.py"
 # %% Load KVP picks
-csv_path = os.path.join(".","data_example","2024_01_13_07h57m34s_HDAS_SAFE_DASWhaleCalls_example_rawKVPpicks.csv")
+csv_path = os.path.join(".","data_example","2024_01_13_07h57m44s_HDAS_SAFE_DASWhaleCalls_example.csv")
 CSVfile_raw_data = pd.read_csv(csv_path,sep=";",comment="#")
 
 print("\n=== KVP PICKS ===")
@@ -122,44 +122,30 @@ KVP_Hfitted_picks = KVPpicks_Hfitting(
 
 # %% "Manual" selection of KVP picks
 # Selection criteria.
-y0_target = 18000.0          # Target hyperbola apex position [m]
-y0_tolerance = 2000.0        # Allowed deviation from target y0 [m]
+# y0_target = 18000.0          # Target hyperbola apex position [m]
+# y0_tolerance = 2000.0        # Allowed deviation from target y0 [m]
+# min_cluster_Xsize = 0.5      # Minimum cluster width [s]
+# max_cluster_Ysize = 10000.0   # Maximum cluster height [m]
+# cluster_selection_mask = (
+#     (KVP_Hfitted_picks["cluster_Xsize"] >= min_cluster_Xsize)
+#     &
+#     (KVP_Hfitted_picks["cluster_Ysize"] <= max_cluster_Ysize)
+#     &
+#     (
+#         np.abs(
+#             KVP_Hfitted_picks["y0"] - y0_target
+#         )
+#         <= y0_tolerance
+#     )
+# )
 
-min_cluster_Xsize = 0.5      # Minimum cluster width [s]
-max_cluster_Ysize = 10000.0   # Maximum cluster height [m]
-
-# FILTRAR PER PENDENT DE LA RECTA EVITAR HORITZONTALS??
-# FILTRE FÍSIC
-# Boolean mask for clusters satisfying all criteria.
-cluster_selection_mask = (
-    (KVP_Hfitted_picks["cluster_Xsize"] >= min_cluster_Xsize)
-    &
-    (KVP_Hfitted_picks["cluster_Ysize"] <= max_cluster_Ysize)
-    &
-    (
-        np.abs(
-            KVP_Hfitted_picks["y0"] - y0_target
-        )
-        <= y0_tolerance
-    )
-)
+max_vapp = 1500
+cluster_selection_mask = KVP_Hfitted_picks["vapp"] <= max_vapp
 
 # Keep only picks belonging to selected clusters.
 KVP_selected_picks = (
     KVP_Hfitted_picks.loc[cluster_selection_mask]
     .copy()
-)
-
-print("\n=== KVP CLUSTER SELECTION ===")
-print(
-    f"Target y0 = {y0_target:.1f} m "
-    f"± {y0_tolerance:.1f} m"
-)
-print(
-    f"Minimum cluster Xsize = {min_cluster_Xsize:.3f} s"
-)
-print(
-    f"Maximum cluster Ysize = {max_cluster_Ysize:.1f} m"
 )
 
 print("\nSelected clusters:")
@@ -273,9 +259,7 @@ title_str = (
     f"Selected clusters: "
     f"{KVP_selected_picks['cluster_id'].nunique()} | "
     f"Selected KVP picks: {len(KVP_selected_picks)}\n"
-    f"y0 = {y0_target:.0f} ± {y0_tolerance:.0f} m | "
-    f"Xsize ≥ {min_cluster_Xsize:.2f} s | "
-    f"Ysize ≤ {max_cluster_Ysize:.0f} m"
+    f"v_app ≤ {max_vapp} [m/s](?) | "
 )
 
 fig, ax = plt.subplots(
