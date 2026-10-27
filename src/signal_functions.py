@@ -235,12 +235,3 @@ def SigFilt_LP(signal, fs, n_filt, fc, plotter=False):
 
     return signal_filt
 
-
-def CMremover(data):
-    nchan, nsamp = data.shape
-    cm = np.nanmedian(data[: :], axis=0)
-    denom = np.dot(cm, cm)
-    numer = np.dot(data, cm)
-    alphas = numer / denom
-    das_corr = data - alphas[:, None] * cm
-    return das_corr, alphas

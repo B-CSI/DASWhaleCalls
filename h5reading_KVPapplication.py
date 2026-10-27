@@ -1,7 +1,3 @@
-# %% 
-TO SOLVE:
-- METADATA IN CSV FILE: INCLUDE THE FILE NAMES 
-- CSV FILE NAME
 # %%
 import h5py
 import os
@@ -14,7 +10,6 @@ import pandas as pd
 from src.signal_functions import (
     SigFilt_HP,
     SigFilt_LP,
-    CMremover
 )
 
 from kvp import KVP
@@ -27,7 +22,7 @@ SCRIPT_NAME = "h5reading_KVPapplication.py"
 file_1 = os.path.join(
     ".",
     "data_example",
-    "2024_01_13_07h57m34s_HDAS_SAFE_DASWhaleCalls_example.h5",
+    "2024_01_13_07h57m44s_HDAS_SAFE_DASWhaleCalls_example.h5",
 )
 file_2 = os.path.join(
     ".",
@@ -37,22 +32,15 @@ file_2 = os.path.join(
 
 
 def read_h5(path):
-
     with h5py.File(path, "r") as f:
-
         result = {
             "data": f["data"][:],
             "fs": float(f.attrs["sampling_frequency"]),
             "dx": float(f.attrs["spatial_sampling"]),
             "unix_time_start": float(f.attrs["unix_time_start"]),
             "distance_start": float(f.attrs["distance_start"]),
-            "channel_start": int(f.attrs["original_channel_start"]),
-            "channel_end": int(f.attrs["original_channel_end"]),
-            "original_number_of_channels": (
-                int(f.attrs["original_number_of_channels"])
-                if "original_number_of_channels" in f.attrs
-                else None
-            ),
+            "channel_start": int(f.attrs["distance_start"])/float(f.attrs["spatial_sampling"]),
+            "channel_end": int(f.attrs["distance_end"])/float(f.attrs["spatial_sampling"]),
         }
 
     return result
@@ -135,9 +123,6 @@ distance_start = h5_1["distance_start"]
 
 original_channel_start = h5_1["channel_start"]
 original_channel_end = h5_1["channel_end"]
-original_number_of_channels = (
-    h5_1["original_number_of_channels"]
-)
 
 n_channels, n_time = data.shape
 
@@ -239,14 +224,26 @@ fmin_filt = 19.0
 fmax_filt = 23.0
 nfilt = 6
 
-freqmax = 20.0
-octaves = 3
-voices = 4
-cf_cycles = 90.0
-jmp_cycles = 4.0
+# Ricker:
+# freqmax = 20.0
+# octaves = 3
+# voices = 4
+# cf_cycles = 90.0
+# jmp_cycles = 4.0
+# jump = 2.0
+# mingap = 3.0
+# nbands = 4
+
+freqmax = 25.0
+octaves = 1
+voices = 10
+cf_cycles = 150.0
+jmp_cycles = 2.0
 jump = 2.0
-mingap = 3.0
-nbands = 4
+mingap = 1.0
+nbands = 2
+w0 = 2*5.3364
+wavelet = 'morlet'
 
 kvp_picker = KVP(
     freqmax=freqmax,
@@ -257,6 +254,8 @@ kvp_picker = KVP(
     jump=jump,
     mingap=mingap,
     nbands=nbands,
+    w0=w0,
+    wavelet=wavelet,
 )
 
 
@@ -267,12 +266,8 @@ kvp_picker = KVP(
 
 channel = 750
 
-array_index = (
-    channel - original_channel_start
-)
-
 signal = data[
-    array_index,
+    channel,
     :
 ].astype(
     np.float64
@@ -322,7 +317,7 @@ ax.set_ylabel(
 
 ax.set_title(
     f"DAS channel {channel} — "
-    f"{distance[array_index] / 1e3:.3f} km"
+    f"{distance[channel] / 1e3:.2f} km"
 )
 
 ax.grid(
@@ -400,7 +395,7 @@ def run_kvp_das(
         signal = data[array_index, :].astype(np.float64)
 
         # Filter the complete concatenated signal
-        signal, _ = CMremover(signal)
+        # signal, _ = CMremover(signal)
 
         # Filter the complete concatenated signal
         signal = SigFilt_HP(
@@ -577,67 +572,8 @@ plt.close(fig)
 
 # %%
 # ============================================================
-# REMOVE FINAL 2 SECONDS
-# ============================================================
-
-edge_time = 2.0
-
-analysis_end = (
-    duration_original
-    - edge_time
-)
-
-df_picks_clean = (
-    df_picks[
-        df_picks["time_rel"]
-        < analysis_end
-    ]
-    .copy()
-)
-
-
-print(
-    "\n=== FINAL CLEAN RESULTS ==="
-)
-
-print(
-    f"Original duration: "
-    f"{duration_original:.3f} s"
-)
-
-print(
-    f"Edge removed:      "
-    f"{edge_time:.3f} s"
-)
-
-print(
-    f"Analysis end:      "
-    f"{analysis_end:.3f} s"
-)
-
-print(
-    f"Picks before:      "
-    f"{len(df_picks)}"
-)
-
-print(
-    f"Picks after:       "
-    f"{len(df_picks_clean)}"
-)
-
-print(
-    f"Picks removed:     "
-    f"{len(df_picks) - len(df_picks_clean)}"
-)
-
-
-# %%
-# ============================================================
 # FINAL KVP PICKS
 # ============================================================
-
-df_picks = df_picks_clean
-
 print(
     "\n=== FINAL KVP PICKS ==="
 )
@@ -660,24 +596,19 @@ print(
 # SAVE CSV IN THE SAME DIRECTORY AS THE HDF5
 # ============================================================
 
-input_file = os.path.abspath(file_1)
-
 # Output filename
 output_filename = (
     os.path.splitext(os.path.basename(file_1))[0]
     + ".csv"
 )
-
 output_file = os.path.join(
     os.path.dirname(os.path.abspath(file_1)),
     output_filename,
 )
-
 print(
     f"\nSaving KVP picks to:\n"
     f"{output_file}"
 )
-
 
 # %%
 # ============================================================
@@ -706,13 +637,11 @@ with open(
         f"# created by {SCRIPT_NAME} ({creation_date})\n"
     )
 
+    f.write("\n# === CONCATENATED HDF5 ===")
+    f.write(f"\n# File 1: {os.path.basename(file_1)}")
+    f.write(f"\n# File 2: {os.path.basename(file_2)}")
     f.write(
-        f"# input_file: "
-        f"{os.path.basename(input_file)}\n"
-    )
-
-    f.write(
-        f"# output_file: "
+        f"\n#output_file: "
         f"{output_filename}\n"
     )
 
@@ -746,11 +675,6 @@ with open(
     f.write(
         f"# number_of_channels_in_hdf5 = "
         f"{n_channels}\n"
-    )
-
-    f.write(
-        f"# original_number_of_channels = "
-        f"{original_number_of_channels}\n"
     )
 
     f.write(
@@ -814,16 +738,6 @@ with open(
 
     f.write(
         "# analysis_start_s = 0\n"
-    )
-
-    f.write(
-        f"# edge_time_removed_from_end_s = "
-        f"{edge_time:.12g}\n"
-    )
-
-    f.write(
-        f"# analysis_end_s = "
-        f"{analysis_end:.12g}\n"
     )
 
     f.write(
@@ -894,34 +808,18 @@ with open(
     )
 
     f.write(
-        "#\n"
-    )
-
-    # ========================================================
-    # Noise context
-    # ========================================================
+            f"# w0 = "
+            f"2*5.3364\n"
+        )
 
     f.write(
-        "# TEMPORAL NOISE CONTEXT\n"
-    )
+            f"# wavelet = "
+            f"{wavelet}\n"
+        )
 
-    f.write("# TEMPORAL CONTEXT\n")
-    f.write("# context_source = adjacent real HDF5 recording\n")
-    f.write(f"# concatenated_file_1 = {os.path.basename(file_1)}\n")
-    f.write(f"# concatenated_file_2 = {os.path.basename(file_2)}\n")
-    f.write("# synthetic_noise_padding = disabled\n")
-    f.write("#\n")
-
+  
     f.write(
         "#\n"
-    )
-
-    # ========================================================
-    # DATA
-    # ========================================================
-
-    f.write(
-        "# DATA\n"
     )
 
     df_picks.to_csv(
