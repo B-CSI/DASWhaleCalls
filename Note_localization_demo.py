@@ -14,7 +14,7 @@ from config.parameters import *
 SCRIPT_NAME = "Note_localization_demo.py"
 plot_config = PlotConfig()
 # %% Load KVP picks
-csv_path = os.path.join(".","data_example","2024_01_13_07h57m34s_HDAS_SAFE_DASWhaleCalls_example_selectedKVPpicks.csv")
+csv_path = os.path.join(".","data_example","2024_01_13_07h57m44s_HDAS_SAFE_DASWhaleCalls_example_selectedKVPpicks.csv")
 KVP_selected_picks = pd.read_csv(csv_path,sep=";",comment="#")
 
 print("\n=== KVP SELECTED PICKS ===")
@@ -488,7 +488,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
             f"# Output: {CSVname}",
             "# ----------------------------------------",
             "# Local tangent plane projection, Units: meters",
-            f"# Cluster: {int(cluster)}/{len(unique_clusters_raw)}"
+            f"# Cluster: {int(cluster)}/{len(KVP_selected_picks['cluster_id'].unique())}"
         ]
         params_line1 = (
             f"# dx={int(dx_res)}m; dy={int(dy_res)}m; "

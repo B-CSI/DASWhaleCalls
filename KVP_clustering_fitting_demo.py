@@ -15,7 +15,6 @@ SCRIPT_NAME = "KVP_clustering_fitting_demo.py"
 # %% Load KVP picks
 csv_path = os.path.join(".","data_example","2024_01_13_07h57m44s_HDAS_SAFE_DASWhaleCalls_example.csv")
 CSVfile_raw_data = pd.read_csv(csv_path,sep=";",comment="#")
-
 print("\n=== KVP PICKS ===")
 print(f"Loaded: {csv_path}")
 print(f"Number of picks: {len(CSVfile_raw_data)}")
@@ -24,9 +23,8 @@ print(CSVfile_raw_data.head())
 
 # %% Representing the inut data (KVP picks):
 plot_config = PlotConfig()
-FigName = "1_kvp_output"
-title_str = "KVP picks output\n"
-
+FigName = "0_KVPpicks_raw"
+title_str = "KVP picks raw\n"
 fig, ax = plt.subplots(figsize=(12, 7))
 # Plot KVP picks
 ax.scatter(
@@ -74,32 +72,44 @@ fig.savefig(
 plt.show()
 plt.close(fig)
 
-# %% CSVfile filtering: 
-KVP_raw_picks_filt = CSVfile_raw_data.copy()
-Nbands_max = 4
-LBand, Hband = 15, 30
-KVP_raw_picks_filt = KVP_raw_picks_filt[KVP_raw_picks_filt["Number_bands"]<=Nbands_max]
-KVP_raw_picks_filt = KVP_raw_picks_filt[KVP_raw_picks_filt["Lowest_band"]>=LBand]
-KVP_raw_picks_filt = KVP_raw_picks_filt[KVP_raw_picks_filt["Highest_band"]<=Hband]
-# print(f"CSVfile_raw_data_filt: {len(CSVfile_raw_data_filt)} samples in {str(dt.timedelta(seconds=float(np.max(CSVfile_raw_data_filt['time_rel']) - np.min(CSVfile_raw_data_filt['time_rel'])))).split('.')[0]} ({len(CSVfile_raw_data_filt)/(np.max(CSVfile_raw_data_filt['time_rel']) - np.min(CSVfile_raw_data_filt['time_rel'])):.1f}/s)")
-
+# %% Data for the analysis:
 KVP_raw_picks = CSVfile_raw_data.copy()
-
 # x and y for the spatio-temporal clustering and hyperbolic fitting of KVP picks:
 KVP_raw_picks["x"] = KVP_raw_picks["time_rel"]
 KVP_raw_picks["y"] = KVP_raw_picks["Channel"] * dist_ch
 
+# %% KVP_raw_picks filtering (not necessary with the kvp v0.2.0): 
+# KVP_raw_picks_filt = CSVfile_raw_data.copy()
+# Nbands_max = 4
+# LBand, Hband = 15, 30
+# KVP_raw_picks_filt = KVP_raw_picks_filt[KVP_raw_picks_filt["Number_bands"]<=Nbands_max]
+# KVP_raw_picks_filt = KVP_raw_picks_filt[KVP_raw_picks_filt["Lowest_band"]>=LBand]
+# KVP_raw_picks_filt = KVP_raw_picks_filt[KVP_raw_picks_filt["Highest_band"]<=Hband]
+# print(f"Points: {len(KVP_raw_picks_filt)} before filtering → {len(KVP_raw_picks_filt)} after filtering | Removed: {len(KVP_raw_picks_filt)-len(KVP_raw_picks_filt)} ({100*(len(KVP_raw_picks_filt)-len(KVP_raw_picks_filt))/len(KVP_raw_picks_filt):.1f}%)")
+
+# %% KVP_raw_picks filtering (necessary with the kvp v0.2.0): 
+from scripts.kvp_clustering_fitting import KVPpicks_noise_filter
+KVP_raw_picks_filt, KVP_noise_picks = KVPpicks_noise_filter(
+    KVP_raw_picks,
+    time_window=0.1,     # [s]
+    min_span_m=10000.0,   # [m]
+    min_picks=30,
+    plotter=True,
+    plt_saver=os.path.join(output_results, "1_KVPpicks_filt.png"),
+    plt_config=plot_config,
+)
+
 # %% Clustering:
 from scripts.kvp_clustering_fitting import KVPpicks_clustering
 KVP_clustered_picks = KVPpicks_clustering(
-        KVP_raw_picks,
+        KVP_raw_picks_filt,
         eps_m,
         min_pts,
         c_sound,
         Xdist,
         Ydist,
         plotter=True,
-        plt_saver=os.path.join(output_results, f"2_KVPpicks_clustering_output.png"),
+        plt_saver=os.path.join(output_results, f"2_KVPpicks_clustering.png"),
         plt_config = plot_config
     )
 
@@ -116,31 +126,48 @@ KVP_Hfitted_picks = KVPpicks_Hfitting(
     refit_bool,
     marginBB_y,
     plotter=True,
-    plt_saver=os.path.join(output_results, f"3_KVPpicks_Hfitting_output.png"),
+    plt_saver=os.path.join(output_results, f"3_KVPpicks_Hfitting.png"),
     plt_config = plot_config
 )
 
+# %% Results Filt+Cluster+HFitting:
+print("\nResults Filt+Cluster+HFitting:")
+print(
+    KVP_Hfitted_picks[
+        [
+            "cluster_id",
+            "n_points",
+            "y0",
+            "t0",
+            "vapp",
+            "cluster_Xsize",
+            "cluster_Ysize",
+        ]
+    ]
+    .drop_duplicates("cluster_id")
+    .sort_values("cluster_id")
+    .to_string(index=False)
+)
+
 # %% "Manual" selection of KVP picks
-# Selection criteria.
+# Selection criteria:
 # y0_target = 18000.0          # Target hyperbola apex position [m]
 # y0_tolerance = 2000.0        # Allowed deviation from target y0 [m]
-# min_cluster_Xsize = 0.5      # Minimum cluster width [s]
-# max_cluster_Ysize = 10000.0   # Maximum cluster height [m]
-# cluster_selection_mask = (
-#     (KVP_Hfitted_picks["cluster_Xsize"] >= min_cluster_Xsize)
-#     &
-#     (KVP_Hfitted_picks["cluster_Ysize"] <= max_cluster_Ysize)
-#     &
-#     (
-#         np.abs(
-#             KVP_Hfitted_picks["y0"] - y0_target
-#         )
-#         <= y0_tolerance
-#     )
-# )
-
-max_vapp = 1500
-cluster_selection_mask = KVP_Hfitted_picks["vapp"] <= max_vapp
+min_cluster_Xsize = 0.5      # Minimum cluster width [s]
+min_cluster_Ysize = 1000.0   # Minimum cluster height [m]
+cluster_selection_mask = (
+    (KVP_Hfitted_picks["cluster_Xsize"] >= min_cluster_Xsize)
+    &
+    (KVP_Hfitted_picks["cluster_Ysize"] >= min_cluster_Ysize)
+    # &
+    # (
+    #     np.abs(
+    #         KVP_Hfitted_picks["y0"] - y0_target
+    #     )
+    #     <= y0_tolerance
+    # )
+)
+# cluster_selection_mask = KVP_Hfitted_picks["n_points"] >= (2*min_pts)
 
 # Keep only picks belonging to selected clusters.
 KVP_selected_picks = (
@@ -153,6 +180,7 @@ print(
     KVP_selected_picks[
         [
             "cluster_id",
+            "n_points",
             "y0",
             "t0",
             "vapp",
@@ -175,91 +203,14 @@ print(
     f"{len(KVP_selected_picks)}"
 )
 
-input_stem = os.path.splitext(
-    os.path.basename(csv_path)
-)[0]
-
-# Remove "_rawKVPpicks" from the input filename
-input_stem = input_stem.replace(
-    "_rawKVPpicks",
-    "",
-)
-
-output_filename = (
-    input_stem
-    + "_selectedKVPpicks.csv"
-)
-
-output_file = os.path.join(
-    ".",
-    "data_example",
-    output_filename,
-)
-
-# ------------------------------------------------------------
-# Creation date
-# ------------------------------------------------------------
-
-creation_date = datetime.now().strftime(
-    "%Y-%m-%d %H:%M:%S"
-)
-
-# ------------------------------------------------------------
-# Save CSV
-# ------------------------------------------------------------
-with open(
-    output_file,
-    "w",
-    encoding="utf-8",
-    newline="",
-) as f:
-
-    f.write(
-        "# KVP SELECTED PICKS\n"
-    )
-
-    f.write(
-        f"# created by {SCRIPT_NAME} ({creation_date})\n"
-    )
-
-    f.write(
-        f"# input_file: "
-        f"{os.path.basename(csv_path)}\n"
-    )
-
-    f.write(
-        "# description = Selected KVP picks after "
-        "spatio-temporal clustering and hyperbolic fitting.\n"
-    )
-
-    f.write(
-        "# DATA\n"
-    )
-
-    KVP_selected_picks.to_csv(
-        f,
-        index=False,
-        sep=";",
-    )
-
-
-print(
-    f"\nCSV saved to:\n"
-    f"{output_file}"
-)
-
-print(
-    f"Rows written: "
-    f"{len(KVP_selected_picks)}"
-)
-
 # %% Represent selected KVP picks
-FigName = "4_KVPpicks_selected_output"
+FigName = "4_KVPpicks_selected"
 title_str = (
     f"Selected clusters: "
     f"{KVP_selected_picks['cluster_id'].nunique()} | "
     f"Selected KVP picks: {len(KVP_selected_picks)}\n"
-    f"v_app ≤ {max_vapp} [m/s](?) | "
+    f"X-size ≥ {min_cluster_Xsize} s | "
+    f"Y-size ≥ {min_cluster_Ysize:.0f} m"
 )
 
 fig, ax = plt.subplots(
@@ -316,7 +267,7 @@ for cid in selected_cluster_ids:
     color = cluster_colors[cid]
 
     # Retrieve the merged cluster geometry.
-    cluster_rows = KVP_clustered_picks.loc[
+    cluster_rows = KVP_selected_picks.loc[
         KVP_clustered_picks["cluster_id"] == cid
     ]
 
@@ -361,8 +312,8 @@ for cid in selected_cluster_ids:
         t_curve,
         y_curve,
         color=color,
-        linewidth=2.2,
-        alpha=0.85,
+        linewidth=3,
+        alpha=0.3,
         zorder=3,
     )
 
@@ -451,3 +402,101 @@ plt.show()
 plt.close(fig)
 
 # %%
+
+
+# %% Save the CSV with the KVP picks selected:
+input_stem = os.path.splitext(
+    os.path.basename(csv_path)
+)[0]
+
+# Remove "_rawKVPpicks" from the input filename
+input_stem = input_stem.replace(
+    "_rawKVPpicks",
+    "",
+)
+
+output_filename = (
+    input_stem
+    + "_selectedKVPpicks.csv"
+)
+
+output_file = os.path.join(
+    ".",
+    "data_example",
+    output_filename,
+)
+
+# ------------------------------------------------------------
+# Creation date
+# ------------------------------------------------------------
+
+creation_date = datetime.now().strftime(
+    "%Y-%m-%d %H:%M:%S"
+)
+
+cluster_id_order = (
+    KVP_selected_picks[
+        ["cluster_id", "t0"]
+    ]
+    .drop_duplicates("cluster_id")
+    .sort_values("t0")
+    ["cluster_id"]
+    .tolist()
+)
+cluster_id_mapping = {
+    old_id: new_id
+    for new_id, old_id in enumerate(cluster_id_order)
+}
+KVP_selected_picks["cluster_id"] = (
+    KVP_selected_picks["cluster_id"]
+    .map(cluster_id_mapping)
+)
+
+# ------------------------------------------------------------
+# Save CSV
+# ------------------------------------------------------------
+with open(
+    output_file,
+    "w",
+    encoding="utf-8",
+    newline="",
+) as f:
+
+    f.write(
+        "# KVP SELECTED PICKS\n"
+    )
+
+    f.write(
+        f"# created by {SCRIPT_NAME} ({creation_date})\n"
+    )
+
+    f.write(
+        f"# input_file: "
+        f"{os.path.basename(csv_path)}\n"
+    )
+
+    f.write(
+        "# description = Selected KVP picks after "
+        "spatio-temporal clustering and hyperbolic fitting.\n"
+    )
+
+    f.write(
+        "# DATA\n"
+    )
+
+    KVP_selected_picks.to_csv(
+        f,
+        index=False,
+        sep=";",
+    )
+
+
+print(
+    f"\nCSV saved to:\n"
+    f"{output_file}"
+)
+
+print(
+    f"Rows written: "
+    f"{len(KVP_selected_picks)}"
+)

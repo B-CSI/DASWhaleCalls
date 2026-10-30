@@ -224,7 +224,7 @@ fmin_filt = 19.0
 fmax_filt = 23.0
 nfilt = 6
 
-# Ricker:
+# # Ricker:
 # freqmax = 20.0
 # octaves = 3
 # voices = 4
@@ -234,6 +234,7 @@ nfilt = 6
 # mingap = 3.0
 # nbands = 4
 
+# # Morlet (https://meetingorganizer.copernicus.org/GC14-FibreOptic/GC14-FibreOptic-63.html):
 freqmax = 25.0
 octaves = 1
 voices = 10

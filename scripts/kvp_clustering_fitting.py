@@ -240,6 +240,154 @@ def merge_dbscan_clusters(
 
     return merged
 
+# %% KVPpicks_noise_filter function:
+def KVPpicks_noise_filter(
+    kvp_picks_df,
+    time_window=0.1,     # [s]
+    min_span_m=2000.0,   # [m]
+    min_picks=20,
+    time_col="x",
+    dist_col="y",
+    plotter=False,
+    plt_saver=None,
+    plt_config=None,
+):
+    """
+    Remove KVP picks that belong to quasi-simultaneous, spatially
+    extended events (vertical stripes in the time-distance plane),
+    which are typically produced by instrumental/common-mode noise
+    rather than by acoustic sources.
+
+    For each pick i, all picks with |t - t_i| <= time_window are
+    collected. Pick i is flagged as noise when, inside that window,
+    there are at least min_picks picks AND they span at least
+    min_span_m along the fiber.
+
+    Parameters
+    ----------
+    kvp_picks_df : pandas.DataFrame
+        KVP picks. Must contain time_col [s] and dist_col [m].
+    time_window : float
+        Half-width of the temporal window [s].
+    min_span_m : float
+        Minimum spatial span inside the window to flag noise [m].
+    min_picks : int
+        Minimum number of picks inside the window to flag noise.
+    time_col : str
+        Column name for time [s].
+    dist_col : str
+        Column name for distance [m].
+    plotter : bool
+        If True, plot kept vs removed picks.
+    plt_saver : str or None
+        Path to save the figure.
+    plt_config : PlotConfig or None
+        Plot configuration.
+
+    Returns
+    -------
+    filtered_df : pandas.DataFrame
+        Picks not flagged as noise (original index preserved).
+    noise_df : pandas.DataFrame
+        Picks flagged as noise.
+    """
+
+    t = kvp_picks_df[time_col].to_numpy(dtype=float)
+    y = kvp_picks_df[dist_col].to_numpy(dtype=float)
+
+    order = np.argsort(t, kind="stable")
+    t_sorted = t[order]
+    y_sorted = y[order]
+
+    # Window limits for every pick (on time-sorted arrays)
+    lo = np.searchsorted(t_sorted, t_sorted - time_window, side="left")
+    hi = np.searchsorted(t_sorted, t_sorted + time_window, side="right")
+
+    noise_sorted = np.zeros(len(t_sorted), dtype=bool)
+
+    for i in range(len(t_sorted)):
+
+        n_win = hi[i] - lo[i]
+
+        if n_win < min_picks:
+            continue
+
+        y_win = y_sorted[lo[i]:hi[i]]
+        span = np.max(y_win) - np.min(y_win)
+
+        if span >= min_span_m:
+            noise_sorted[i] = True
+
+    # Back to original order
+    noise_mask = np.zeros(len(t), dtype=bool)
+    noise_mask[order] = noise_sorted
+
+    filtered_df = kvp_picks_df.loc[~noise_mask].copy()
+    noise_df = kvp_picks_df.loc[noise_mask].copy()
+
+    print("\n=== KVP NOISE FILTER ===")
+    print(
+        f"time_window = ±{time_window} s | "
+        f"min_span = {min_span_m} m | "
+        f"min_picks = {min_picks}"
+    )
+    print(f"Input picks: {len(kvp_picks_df)}")
+    print(f"Removed (noise): {len(noise_df)}")
+    print(f"Kept: {len(filtered_df)}")
+
+    if plotter:
+
+        if plt_config is None:
+            plt_config = PlotConfig()
+
+        fig, ax = plt.subplots(figsize=(12, 7))
+
+        ax.scatter(
+            filtered_df[time_col],
+            filtered_df[dist_col],
+            s=15,
+            alpha=0.7,
+            color="grey",
+            label=f"Kept ({len(filtered_df)})",
+        )
+        ax.scatter(
+            noise_df[time_col],
+            noise_df[dist_col],
+            s=15,
+            alpha=0.7,
+            color="red",
+            label=f"Removed as noise ({len(noise_df)})",
+        )
+
+        ax.set_title(
+            f"KVP picks\n"
+            f"±{time_window} s window | span ≥ {min_span_m} m | "
+            f"≥ {min_picks} picks",
+            fontsize=plt_config.title_size,
+            fontweight="bold",
+        )
+        ax.set_xlabel("Time [s]", fontsize=plt_config.label_size)
+        ax.set_ylabel("Distance [m]", fontsize=plt_config.label_size)
+        ax.tick_params(
+            axis="both",
+            which="both",
+            labelsize=plt_config.tick_size,
+        )
+        ax.grid(
+            True,
+            linewidth=plt_config.grid_width,
+            alpha=plt_config.grid_alpha,
+        )
+        ax.legend(fontsize=plt_config.legend_size)
+
+        fig.tight_layout()
+        if plt_saver is not None:
+            fig.savefig(plt_saver, dpi=300, bbox_inches="tight")
+        plt.show()
+        plt.close(fig)
+
+    return filtered_df, noise_df
+
 # %% Hyperbolic fit (using physical distance in metres):
 @dataclass
 class FitResult:
