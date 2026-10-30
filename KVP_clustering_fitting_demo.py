@@ -175,7 +175,10 @@ KVP_selected_picks = (
     .copy()
 )
 
-print("\nSelected clusters:")
+print("\nSelected clusters ("
+    f"X-size ≥ {min_cluster_Xsize} s | "
+    f"Y-size ≥ {min_cluster_Ysize:.0f} m):"
+)
 print(
     KVP_selected_picks[
         [
@@ -267,7 +270,7 @@ for cid in selected_cluster_ids:
     color = cluster_colors[cid]
 
     # Retrieve the merged cluster geometry.
-    cluster_rows = KVP_selected_picks.loc[
+    cluster_rows = KVP_clustered_picks.loc[
         KVP_clustered_picks["cluster_id"] == cid
     ]
 
@@ -401,9 +404,6 @@ fig.savefig(
 plt.show()
 plt.close(fig)
 
-# %%
-
-
 # %% Save the CSV with the KVP picks selected:
 input_stem = os.path.splitext(
     os.path.basename(csv_path)
@@ -500,3 +500,4 @@ print(
     f"Rows written: "
     f"{len(KVP_selected_picks)}"
 )
+# %%
