@@ -516,4 +516,111 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
 
 Results_df = pd.DataFrame(Results_df, columns=Results_df_columns)
 
-# %%
+# %% Spatial representation using probability percentile and time
+
+percentile = 95  # Probability percentile
+
+fig, ax = plt.subplots(figsize=(10, 8))
+
+# Collect data from all clusters
+x_all = []
+y_all = []
+t_all = []
+
+for _, row in Results_df.iterrows():
+
+    x = np.asarray(row['x'])
+    y = np.asarray(row['y'])
+    prob = np.asarray(row['Prob'])
+
+    # Time
+    time = row['unixtime']
+
+    if np.ndim(time) == 0:
+        t = np.full(len(x), float(time))
+    else:
+        t = np.asarray(time)
+
+    # Probability threshold (calculated independently per cluster)
+    prob_threshold = np.nanpercentile(prob, percentile)
+
+    # Filter points
+    mask = (
+        (prob >= prob_threshold)
+        & np.isfinite(prob)
+        & np.isfinite(x)
+        & np.isfinite(y)
+        & np.isfinite(t)
+    )
+
+    x_all.append(x[mask])
+    y_all.append(y[mask])
+    t_all.append(t[mask])
+
+# Concatenate all clusters
+x_filt = np.concatenate(x_all)
+y_filt = np.concatenate(y_all)
+t_filt = np.concatenate(t_all)
+
+# Convert time to seconds relative to first selected point
+t_filt = t_filt - np.min(t_filt)
+
+# Scatter
+sc = ax.scatter(
+    x_filt,
+    y_filt,
+    c=t_filt,
+    cmap='viridis',
+    s=12,
+    alpha=0.8,
+    edgecolors='none',
+    zorder=3
+)
+
+# DAS cable
+ax.plot(
+    CSVfile_cable_data["X[m]"],
+    CSVfile_cable_data["Y[m]"],
+    color='black',
+    linestyle='-',
+    linewidth=2,
+    label='DAS cable',
+    zorder=2
+)
+
+# Colorbar
+cbar = fig.colorbar(sc, ax=ax)
+cbar.set_label(
+    'Time [s]',
+    rotation=270,
+    labelpad=15
+)
+
+# Labels and title
+ax.set_xlabel('X [m]')
+ax.set_ylabel('Y [m]')
+
+ax.set_title(
+    f'Spatial distribution (Prob >= P{percentile})'
+    # f'\n{len(x_filt)} selected positions'
+)
+
+# Axis limits based only on filtered Results_df positions
+ax.set_xlim(np.min(x_all)-1e3, np.max(x_all)+1e3)
+ax.set_ylim(np.min(y_all)-1e3, np.max(y_all)+1e3)
+
+# Grid
+ax.grid(
+    True,
+    linestyle='--',
+    alpha=0.4
+)
+
+# Equal axis
+# ax.set_aspect('equal', adjustable='box')
+
+# Legend
+ax.legend(frameon=True)
+
+plt.tight_layout()
+plt.show()
