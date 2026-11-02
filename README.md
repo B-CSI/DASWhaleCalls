@@ -12,6 +12,21 @@ This repository is currently under development. The example workflow and accompa
 
 These changes concern the implementation and presentation of the example workflow and should not be interpreted as changes to the underlying method itself.
 
+### Current status of the scripts
+
+The following scripts have been reviewed and finalized:
+
+- h5reading_KVPapplication.py
+- KVP_clustering_fitting_demo.py
+
+The remaining components are still under development:
+
+- Note_localization_demo.py: Currently based on the version used in the arXiv paper. The implementation needs to be reviewed and updated.
+- Note_characterization_features_demo.py: Still under development and not yet finalized for the public repository.
+- DASWhaleCalls_example.ipynb: The notebook will be finalized once the two scripts above have been completed and updated.
+
+The repository will be progressively updated as the remaining scripts and the example workflow are reviewed and finalized.
+
 ## Requirements
 After cloning the repository:
 ```
