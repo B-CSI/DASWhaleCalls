@@ -269,9 +269,18 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     fig, axes = plt.subplots(1,2,figsize=(12, 6),sharey=True)
     # LEFT AXIS: observed vs calculated times
     ax = axes[0]
+    # Calculated times
+    ax.plot(
+        T_calc_best - np.min(T_calc_best),
+        y,
+        linestyle="-",
+        marker="",
+        color="black",
+        label="Calculated",
+    )   
     # Observed times
     ax.plot(
-        T_obs_s[inlier_mask],
+        T_obs_s[inlier_mask] - best_shift - np.min(T_calc_best),
         y[inlier_mask],
         linestyle="",
         marker="x",
@@ -279,15 +288,6 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         markeredgewidth=1.5,
         color="tab:blue",
         label="Observed",
-    )
-    # Calculated times
-    ax.plot(
-        T_calc_best,
-        y,
-        linestyle="-",
-        marker="",
-        color="black",
-        label="Calculated",
     )
     # Figure formatting.
     ax.set_title(
