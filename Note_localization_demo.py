@@ -1,3 +1,8 @@
+# %% TODO: Review and update
+# This is an older version of the Matching Score calculation,
+# as used in the arXiv paper (called "Probability" in this code).
+# It needs to be revised and updated.
+
 # %% Imports
 # Standard library
 import os
