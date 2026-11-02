@@ -33,7 +33,7 @@ picks_per_cluster = (
 )
 print(
     f"Picks/cluster:      "
-    f"{picks_per_cluster.min()} - {picks_per_cluster.max()} "
+    f"[{picks_per_cluster.min()},{picks_per_cluster.max()}] "
     f"(median = {picks_per_cluster.median():.0f})"
 )
 
@@ -468,7 +468,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     E_calc_x_m, E_calc_y_m = E_calc_xy_m[:,0], E_calc_xy_m[:,1]
     best_results = {
         'cluster_id': cluster,
-        'unixtime': np.min(KVPpicks_cluster['unixtime']),
+        'unixtime': np.min(KVPpicks_cluster['unix_time']),
         'Npicks': len(KVPpicks_cluster),
         'Prob': Prob.tolist(),
         'x': E_calc_x_m.tolist(),
