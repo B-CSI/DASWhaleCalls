@@ -10,9 +10,7 @@ import numpy as np
 
 # Third-party libraries
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 import pandas as pd
-from datetime import datetime
 from tqdm import tqdm
 from config.parameters import *
 
