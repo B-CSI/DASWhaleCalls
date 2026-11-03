@@ -389,7 +389,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         E_calc_xy_m[:, 0],
         E_calc_xy_m[:, 1],
         c=misfit_prob_norm,
-        cmap="viridis",
+        cmap="viridis_r",
         marker="s",
     )
     ax.plot(
