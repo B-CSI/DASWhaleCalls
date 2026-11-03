@@ -270,7 +270,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         dpi=150,
         bbox_inches="tight",
     )
-    plt.show()
+    # plt.show()
     plt.close(fig)
 
     # Figure: times and residuals
@@ -379,7 +379,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         dpi=150,
         bbox_inches="tight",
     )
-    plt.show()
+    # plt.show()
     plt.close(fig)
 
 
@@ -470,7 +470,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         dpi=150,
         bbox_inches="tight",
     )
-    plt.show()
+    # plt.show()
     plt.close(fig)
     plt.close("all")
 
@@ -629,4 +629,4 @@ ax.grid(
 ax.legend(frameon=True)
 
 plt.tight_layout()
-plt.show()
+# plt.show()
