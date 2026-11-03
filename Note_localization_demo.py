@@ -140,12 +140,17 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
 
     # print(f"Grid: {len(E_calc_xy_m)} samples; dx: {int(dx_res)}m; dy: {int(dy_res)}m\n[+/- {np.abs(int(maxX))},+/- {np.abs(int(maxY))}]m")
     
-    Prob = np.empty(len(E_calc_xy_m))
+    # Prob = np.empty(len(E_calc_xy_m))
+    misfit_prob = np.empty(len(E_calc_xy_m))
     for i in range(len(E_calc_xy_m)):
         misfit, _, _ = localization_misfit(T_obs_s,T_calc_s[:, i],fs=fs,n_sigma=n_sigma_terr)
-        Prob[i] = 1.0 / (1.0 + misfit**2)
+        # Prob[i] = 1.0 / (1.0 + misfit**2)
+        misfit_prob[i] = misfit
 
-    best_idx = np.where(Prob == np.max(Prob))[0][0]
+    misfit_prob_norm = misfit_prob*(1/len(T_obs_s))
+
+    # best_idx = np.where(Prob == np.max(Prob))[0][0]
+    best_idx = np.where(misfit_prob_norm == np.min(misfit_prob_norm))[0][0]
     best_point = E_calc_xy_m[best_idx, :]
 
     # Residuals at the best localization point
@@ -383,7 +388,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     sc = ax.scatter(
         E_calc_xy_m[:, 0],
         E_calc_xy_m[:, 1],
-        c=Prob,
+        c=misfit_prob_norm,
         cmap="viridis",
         marker="s",
     )
@@ -401,11 +406,12 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         color="red",
         marker="*",
         linestyle="",
-        label=f"Best: {Prob[best_idx]:.3f}",
+        label=f"Best: {misfit_prob_norm[best_idx]:.3f}",
     )
     cbar = fig.colorbar(sc, ax=ax)
     cbar.set_label(
-        "Probability",
+        # "Probability",
+        r"$\epsilon$",
         rotation=270,
         labelpad=15,
         fontsize=plot_config.label_size,
@@ -473,7 +479,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         'cluster_id': cluster,
         'unixtime': np.min(KVPpicks_cluster['unix_time']),
         'Npicks': len(KVPpicks_cluster),
-        'Prob': Prob.tolist(),
+        'Prob': misfit_prob_norm.tolist(),
         'x': E_calc_x_m.tolist(),
         'y': E_calc_y_m.tolist(),
         'dx': dx_res,
