@@ -1,8 +1,3 @@
-# %% TODO: Review and update
-# This is an older version of the Matching Score calculation,
-# as used in the arXiv paper (called "Probability" in this code).
-# It needs to be revised and updated.
-
 # %% Imports
 # Standard library
 import os
@@ -110,6 +105,7 @@ Nx = int(2 * maxX / dx_res) + 1
 Ny = int(2 * maxY / dy_res) + 1
 Ntotal = Nx * Ny
 
+fig_counter = 5
 for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupby('cluster_id'), total=KVP_selected_picks['cluster_id'].nunique(), desc="DAS positioning")):
     # cluster, KVPpicks_cluster = list(KVP_selected_picks.groupby('cluster_id'))[idx]
     times_obs = KVPpicks_cluster["time_rel"].values 
@@ -140,17 +136,11 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
 
     # print(f"Grid: {len(E_calc_xy_m)} samples; dx: {int(dx_res)}m; dy: {int(dy_res)}m\n[+/- {np.abs(int(maxX))},+/- {np.abs(int(maxY))}]m")
     
-    # Prob = np.empty(len(E_calc_xy_m))
-    misfit_prob = np.empty(len(E_calc_xy_m))
+    misfit_s = np.empty(len(E_calc_xy_m))
     for i in range(len(E_calc_xy_m)):
-        misfit, _, _ = localization_misfit(T_obs_s,T_calc_s[:, i],fs=fs,n_sigma=n_sigma_terr)
-        # Prob[i] = 1.0 / (1.0 + misfit**2)
-        misfit_prob[i] = misfit
+        misfit_s[i], _, _ = localization_misfit(T_obs_s,T_calc_s[:, i],fs=fs,n_sigma=n_sigma_terr)
 
-    misfit_prob_norm = misfit_prob*(1/len(T_obs_s))
-
-    # best_idx = np.where(Prob == np.max(Prob))[0][0]
-    best_idx = np.where(misfit_prob_norm == np.min(misfit_prob_norm))[0][0]
+    best_idx = np.where(misfit_s == np.min(misfit_s))[0][0]
     best_point = E_calc_xy_m[best_idx, :]
 
     # Residuals at the best localization point
@@ -193,8 +183,8 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     # Figure formatting.
     ax.set_title(
         f"All channels\n"
-        f"Shift = {best_shift*1000:.2f} ms | "
-        f"Misfit = {misfit*1000:.2f} ms",
+        f"Shift = {best_shift:.2f} s | "
+        f"Misfit = {misfit:.2f} s",
         fontsize=plot_config.title_size,
         fontweight="bold",
     )
@@ -265,7 +255,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     fig.savefig(
         os.path.join(
             output_results,
-            f"DASpos_residuals_{int(cluster)}.png",
+            f"{fig_counter+int(cluster)}_NoteLoc_cluster{int(cluster)}_a_residuals_selection.png",
         ),
         dpi=150,
         bbox_inches="tight",
@@ -345,8 +335,8 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     )
     ax.set_title(
         f"Time residuals\n"
-        f"Shift = {best_shift*1000:.2f} ms | "
-        f"Misfit = {misfit*1000:.2f} ms",
+        f"Shift = {best_shift:.2f} s | "
+        f"Misfit = {misfit:.2f} s",
         fontsize=plot_config.title_size,
         fontweight="bold",
     )
@@ -374,7 +364,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     fig.savefig(
         os.path.join(
             output_results,
-            f"DASpos_times_residuals_{int(cluster)}.png",
+            f"{fig_counter+int(cluster)}_NoteLoc_cluster{int(cluster)}_b_misfit.png",
         ),
         dpi=150,
         bbox_inches="tight",
@@ -388,8 +378,9 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     sc = ax.scatter(
         E_calc_xy_m[:, 0],
         E_calc_xy_m[:, 1],
-        c=misfit_prob_norm,
-        cmap="viridis_r",
+        # c = misfit_s,
+        c=1/(1+(misfit_s/1)**2),       # Representation for better visualization
+        cmap="viridis",
         marker="s",
     )
     ax.plot(
@@ -406,12 +397,12 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         color="red",
         marker="*",
         linestyle="",
-        label=f"Best: {misfit_prob_norm[best_idx]:.3f}",
+        label=f"Best: {misfit_s[best_idx]:.3f}s",
     )
     cbar = fig.colorbar(sc, ax=ax)
     cbar.set_label(
-        # "Probability",
-        r"$\epsilon$",
+        # r"$\epsilon$ [s]",    
+        r"$1/(1+(\epsilon/1\,\mathrm{s})^2)$",     # Representation for better visualization
         rotation=270,
         labelpad=15,
         fontsize=plot_config.label_size,
@@ -465,7 +456,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     fig.savefig(
         os.path.join(
             output_results,
-            f"DASpos_{int(cluster)}.png",
+            f"{fig_counter+int(cluster)}_NoteLoc_cluster{int(cluster)}_c.png",
         ),
         dpi=150,
         bbox_inches="tight",
@@ -479,7 +470,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         'cluster_id': cluster,
         'unixtime': np.min(KVPpicks_cluster['unix_time']),
         'Npicks': len(KVPpicks_cluster),
-        'Prob': misfit_prob_norm.tolist(),
+        'Prob': misfit_s.tolist(),
         'x': E_calc_x_m.tolist(),
         'y': E_calc_y_m.tolist(),
         'dx': dx_res,
@@ -491,7 +482,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         Results_df.append(best_results)
         # Output data saved as one CSV per cluster
         CSVbase = os.path.basename(csv_path).split('.')[0]
-        CSVname = f"{CSVbase}_DASpos_cluster{int(cluster)}.csv"
+        CSVname = f"{CSVbase}_NoteLoc_cluster{int(cluster)}.csv"
         metadata = [
             f"# Input: {os.path.basename(csv_path)}",
             f"# Output: {CSVname}",

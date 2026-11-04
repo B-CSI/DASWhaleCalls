@@ -102,17 +102,20 @@ def localization_misfit(
     Returns
     -------
     misfit : float
-        Localization misfit,
+        Localization misfit, defined as the mean absolute error (MAE)
+        of the retained residuals:
 
-            ε = Σ |T_calc - T_obs|,
+            ε = (1 / N_inliers) * Σ |T_calc - T_obs_shifted|  [s]
 
-        computed using only the retained observations.
+        where N_inliers is the number of observations retained after
+        MAD-based outlier rejection.
 
     best_shift : float
-        Temporal shift (s) applied to the observed arrival times.
+        Optimal temporal shift applied to the observed arrival times (s).
 
     inlier_indices : ndarray
-        Indices of the observations retained after MAD filtering.
+        Indices of the observations retained after MAD filtering
+        for the optimal temporal shift.
     """
 
     observed_times = np.asarray(observed_times, dtype=float)
@@ -142,7 +145,7 @@ def localization_misfit(
         inliers = np.where((residuals >= lower) & (residuals <= upper))[0]
         if len(inliers) == 0:
             continue
-        misfit = np.sum(np.abs(residuals[inliers]))
+        misfit = (1/len(residuals[inliers]))*np.sum(np.abs(residuals[inliers]))
         if misfit < best_misfit:
             best_misfit = misfit
             best_shift = shift
