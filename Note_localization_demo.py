@@ -94,6 +94,7 @@ dist_cable = CSVfile_cable_data["Channel"].values * dist_ch
 # plt.show()
 
 # %% Positioning 
+from matplotlib.colors import LogNorm
 from scripts.kvp_positioning import gridCreator2Dsquare, localization_misfit
 
 Results_df_columns = (
@@ -157,22 +158,25 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     inlier_mask = np.zeros(len(R_obs_id), dtype=bool)
     inlier_mask[inliers] = True
 
-    # Figure: Time residuals at best localization point
-    fig, axes = plt.subplots(1,2,figsize=(12, 6),sharey=True)
-    ax = axes[0]
+
+    # Figure: Localization time and residual analysis
+    fig, axes = plt.subplots(1, 3,figsize=(18, 7),sharey=True)
     y = np.arange(len(R_obs_id))
-    # All channels: inliers + outliers
+    # AXIS 1: All channels (inliers + outliers)
+    ax = axes[0]
     ax.barh(
         y[inlier_mask],
         residuals[inlier_mask] * 1000,
         height=0.7,
         label="Inliers",
+        color="tab:blue",
     )
     ax.barh(
         y[~inlier_mask],
         residuals[~inlier_mask] * 1000,
         height=0.7,
         label="Outliers",
+        color="tab:orange",
     )
     ax.axvline(
         0,
@@ -180,11 +184,8 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         linestyle="--",
         linewidth=1,
     )
-    # Figure formatting.
     ax.set_title(
-        f"All channels\n"
-        f"Shift = {best_shift:.2f} s | "
-        f"Misfit = {misfit:.2f} s",
+        "All channels",
         fontsize=plot_config.title_size,
         fontweight="bold",
     )
@@ -196,77 +197,10 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         "Channel",
         fontsize=plot_config.label_size,
     )
-    ax.tick_params(
-        axis="both",
-        which="major",
-        labelsize=plot_config.tick_size,
-    )
-    ax.tick_params(
-        axis="both",
-        which="minor",
-        labelsize=plot_config.tick_size,
-    )
-    ax.grid(
-        True,
-        linewidth=plot_config.grid_width,
-        alpha=plot_config.grid_alpha,
-    )
     ax.legend()
-    # Only inliers.
-    ax = axes[1]
-    ax.barh(
-        y[inlier_mask],
-        residuals[inlier_mask] * 1000,
-        height=0.7,
-        color="tab:blue",
-    )
-    ax.axvline(
-        0,
-        color="black",
-        linestyle="--",
-        linewidth=1,
-    )
-    # Figure formatting.
-    ax.set_title(
-        "Inliers only",
-        fontsize=plot_config.title_size,
-        fontweight="bold",
-    )
-    ax.set_xlabel(
-        "T_calc - T_obs [ms]",
-        fontsize=plot_config.label_size,
-    )
-    ax.tick_params(
-        axis="both",
-        which="major",
-        labelsize=plot_config.tick_size,
-    )
-    ax.tick_params(
-        axis="both",
-        which="minor",
-        labelsize=plot_config.tick_size,
-    )
-    ax.grid(
-        True,
-        linewidth=plot_config.grid_width,
-        alpha=plot_config.grid_alpha,
-    )
-    plt.tight_layout()
-    fig.savefig(
-        os.path.join(
-            output_results,
-            f"{fig_counter+int(cluster)}_NoteLoc_cluster{int(cluster)}_a_residuals_selection.png",
-        ),
-        dpi=150,
-        bbox_inches="tight",
-    )
-    # plt.show()
-    plt.close(fig)
 
-    # Figure: times and residuals
-    fig, axes = plt.subplots(1,2,figsize=(12, 6),sharey=True)
-    # LEFT AXIS: observed vs calculated times
-    ax = axes[0]
+    # AXIS 2: Observed vs calculated arrival times
+    ax = axes[1]
     # Calculated times
     ax.plot(
         T_calc_best - np.min(T_calc_best),
@@ -275,8 +209,8 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         marker="",
         color="black",
         label="Calculated",
-    )   
-    # Observed times
+    )
+    # Observed times (inliers only)
     ax.plot(
         T_obs_s[inlier_mask] - best_shift - np.min(T_calc_best),
         y[inlier_mask],
@@ -287,7 +221,6 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         color="tab:blue",
         label="Observed",
     )
-    # Figure formatting.
     ax.set_title(
         "Observed vs calculated",
         fontsize=plot_config.title_size,
@@ -297,29 +230,11 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         "Time [s]",
         fontsize=plot_config.label_size,
     )
-    ax.set_ylabel(
-        "Channel",
-        fontsize=plot_config.label_size,
-    )
-    ax.tick_params(
-        axis="both",
-        which="major",
-        labelsize=plot_config.tick_size,
-    )
-    ax.tick_params(
-        axis="both",
-        which="minor",
-        labelsize=plot_config.tick_size,
-    )
-    ax.grid(
-        True,
-        linewidth=plot_config.grid_width,
-        alpha=plot_config.grid_alpha,
-    )
     ax.legend()
-    # RIGHT AXIS: residuals
-    ax = axes[1]
-    # Inliers
+
+    # AXIS 3: Inliers residuals only
+    ax = axes[2]
+
     ax.barh(
         y[inlier_mask],
         residuals[inlier_mask] * 1000,
@@ -334,9 +249,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         linewidth=1,
     )
     ax.set_title(
-        f"Time residuals\n"
-        f"Shift = {best_shift:.2f} s | "
-        f"Misfit = {misfit:.2f} s",
+        "Inliers only",
         fontsize=plot_config.title_size,
         fontweight="bold",
     )
@@ -344,27 +257,41 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
         "T_calc - T_obs [ms]",
         fontsize=plot_config.label_size,
     )
-    ax.tick_params(
-        axis="both",
-        which="major",
-        labelsize=plot_config.tick_size,
-    )
-    ax.tick_params(
-        axis="both",
-        which="minor",
-        labelsize=plot_config.tick_size,
-    )
-    ax.grid(
-        True,
-        linewidth=plot_config.grid_width,
-        alpha=plot_config.grid_alpha,
-    )
     ax.legend()
+
+    # COMMON FORMATTING
+    for ax in axes:
+        ax.tick_params(
+            axis="both",
+            which="major",
+            labelsize=plot_config.tick_size,
+        )
+        ax.tick_params(
+            axis="both",
+            which="minor",
+            labelsize=plot_config.tick_size,
+        )
+        ax.grid(
+            True,
+            linewidth=plot_config.grid_width,
+            alpha=plot_config.grid_alpha,
+        )
+
+    # Overall figure title
+    fig.suptitle(
+        f"Cluster: {int(cluster)} | "
+        f"Shift = {best_shift:.3f} s | "
+        f"MAE = {misfit:.4f} s | "
+        f"Inliers = {np.sum(inlier_mask)}/{len(inlier_mask)}",
+        fontsize=plot_config.title_size,
+        fontweight="bold",
+    )
+
     plt.tight_layout()
     fig.savefig(
         os.path.join(
             output_results,
-            f"{fig_counter+int(cluster)}_NoteLoc_cluster{int(cluster)}_b_misfit.png",
+            f"5_NoteLoc_cluster{int(cluster)}_times.png",
         ),
         dpi=150,
         bbox_inches="tight",
@@ -372,15 +299,18 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     # plt.show()
     plt.close(fig)
 
-
     # Figure: Localization probability
     fig, ax = plt.subplots(figsize=(8, 6))
     sc = ax.scatter(
         E_calc_xy_m[:, 0],
         E_calc_xy_m[:, 1],
         # c = misfit_s,
-        c=1/(1+(misfit_s/1)**2),       # Representation for better visualization
-        cmap="viridis",
+        c=np.maximum(misfit_s, 1e-6),       # Representation for better visualization
+        norm=LogNorm(
+            vmin=np.min(np.maximum(misfit_s, 1e-6)),
+            vmax=np.max(np.maximum(misfit_s, 1e-6)),
+        ),
+        cmap="viridis_r",
         marker="s",
     )
     ax.plot(
@@ -401,8 +331,8 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     )
     cbar = fig.colorbar(sc, ax=ax)
     cbar.set_label(
-        # r"$\epsilon$ [s]",    
-        r"$1/(1+(\epsilon/1\,\mathrm{s})^2)$",     # Representation for better visualization
+        # r"MAE [s]",    
+        r"MAE [s] (log scale)",     # Representation for better visualization
         rotation=270,
         labelpad=15,
         fontsize=plot_config.label_size,
@@ -456,7 +386,7 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
     fig.savefig(
         os.path.join(
             output_results,
-            f"{fig_counter+int(cluster)}_NoteLoc_cluster{int(cluster)}_c.png",
+            f"6_NoteLoc_cluster{int(cluster)}.png",
         ),
         dpi=150,
         bbox_inches="tight",
@@ -514,18 +444,15 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
 Results_df = pd.DataFrame(Results_df, columns=Results_df_columns)
 
 # %% Spatial representation using probability percentile and time
-
 percentile = 95  # Probability percentile
 
 fig, ax = plt.subplots(figsize=(10, 8))
-
 # Collect data from all clusters
 x_all = []
 y_all = []
 t_all = []
 
 for _, row in Results_df.iterrows():
-
     x = np.asarray(row['x'])
     y = np.asarray(row['y'])
     prob = np.asarray(row['Prob'])
