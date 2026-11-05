@@ -10,6 +10,10 @@ import pandas as pd
 from tqdm import tqdm
 from config.parameters import *
 
+import matplotlib.dates as mdates
+from matplotlib.ticker import FuncFormatter
+import datetime as dt
+
 SCRIPT_NAME = "Note_localization_demo.py"
 plot_config = PlotConfig()
 # %% Load KVP picks
@@ -465,7 +469,7 @@ Results_df = pd.concat(dfs, ignore_index=True)
 # %% Spatial representation using misfit percentile
 percentile = 95  # Select the best (100-percentile)% (lowest misfit values)
 
-fig, ax = plt.subplots(figsize=(10, 8))
+fig, ax = plt.subplots(figsize=(8, 5))
 
 x_all, y_all, t_all, misfit_all, cluster_all = [], [], [], [], []
 cluster_stats = []
@@ -522,6 +526,17 @@ t_filt = np.concatenate(t_all)
 misfit_all = np.concatenate(misfit_all)
 cluster_all = np.concatenate(cluster_all)
 
+# Absolute and relative time reference
+t_start = np.min(t_filt)
+t_end = np.max(t_filt)
+duration_seconds = int(round(t_end - t_start))
+t_start_datetime = dt.datetime.fromtimestamp(
+    t_start,
+    tz=dt.timezone.utc
+)
+# Relative time for colorbar
+t_filt = t_filt - t_start
+
 # Global minimum and maximum
 idx_min = np.argmin(misfit_all)
 idx_max = np.argmax(misfit_all)
@@ -574,8 +589,71 @@ for stat in cluster_stats:
     )
 print("="*80 + "\n")
 
-# Relative time
-t_filt -= np.min(t_filt)
+# Save summary as ASCII text file
+summary_file = os.path.join(
+    output_results,
+    f"7_NoteLoc_P{percentile}.txt",
+)
+
+hours = duration_seconds // 3600
+minutes = (duration_seconds % 3600) // 60
+seconds = duration_seconds % 60
+
+duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+start_str = (
+    t_start_datetime.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + "Z"
+)
+
+with open(summary_file, "w", encoding="ascii") as f:
+
+    f.write("="*80 + "\n")
+    f.write("          DAS SPATIAL REPRESENTATION SUMMARY\n")
+    f.write("="*80 + "\n")
+
+    f.write(f"Start time               : {start_str}\n")
+    f.write(f"Duration                 : {duration_str} (HH:mm:SS)\n")
+
+    f.write("-"*80 + "\n")
+
+    f.write(
+        f"Misfit percentile        : P{percentile} "
+        f"(selected points {n_selected_per_cluster}/{n_total_per_cluster})\n"
+    )
+
+    f.write(f"Total clusters           : {n_clusters_total}\n")
+
+    f.write(
+        f"Misfit value             : "
+        f"[{misfit_min_selected:.6f}, {misfit_max_selected:.6f}] s "
+        f"([{misfit_min_selected*1000:.3f}, "
+        f"{misfit_max_selected*1000:.3f}] ms) "
+        f"| [Cluster {cluster_min}, Cluster {cluster_max}]\n"
+    )
+
+    f.write("-"*80 + "\n")
+
+    f.write(
+        f"{'Cluster':>8} "
+        f"{'P threshold':>14} "
+        f"{'Min misfit [s]':>17} "
+        f"{'Max misfit [s]':>17}\n"
+    )
+
+    f.write("-"*80 + "\n")
+
+    for stat in cluster_stats:
+        f.write(
+            f"{stat['cluster']:>8} "
+            f"{stat['misfit_th']:>14.6f} "
+            f"{stat['misfit_min']:>17.6f} "
+            f"{stat['misfit_max']:>17.6f}\n"
+        )
+
+    f.write("="*80 + "\n")
+
+print(f"Summary saved: {summary_file}")
+
 # Spatial scatter
 sc = ax.scatter(
     x_filt,
@@ -599,20 +677,36 @@ ax.plot(
 )
 # Colorbar
 cbar = fig.colorbar(sc, ax=ax)
-
 cbar.set_label(
-    "Time [s]",
+    "Time [HH:mm:SS]",
     rotation=270,
     labelpad=15,
     fontsize=plot_config.label_size,
 )
+def format_time(seconds, pos):
+    seconds = int(round(seconds))
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+cbar.ax.yaxis.set_major_formatter(
+    FuncFormatter(format_time)
+)
 cbar.ax.tick_params(labelsize=plot_config.tick_size)
+
 # Labels and title
 ax.set_xlabel("X [m]", fontsize=plot_config.label_size)
 ax.set_ylabel("Y [m]", fontsize=plot_config.label_size)
 
+# ax.set_title(
+#     f"Spatial distribution (lowest {100-percentile}% misfit)",
+#     fontsize=plot_config.title_size,
+#     fontweight="bold",
+# )
 ax.set_title(
-    f"Spatial distribution (lowest {100-percentile}% misfit)",
+    f"Spatial distribution (lowest {100-percentile}% misfit)\n"
+    # f"Start: {t_start_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} UTC",
+    f"Start: {t_start_datetime.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}Z",
     fontsize=plot_config.title_size,
     fontweight="bold",
 )
@@ -640,7 +734,7 @@ ax.grid(
     alpha=plot_config.grid_alpha,
 )
 
-# ax.set_aspect("equal", adjustable="box")
+ax.set_aspect("equal", adjustable="box")
 ax.legend(frameon=True)
 
 plt.tight_layout()
@@ -655,3 +749,161 @@ fig.savefig(
 )
 plt.show()
 plt.close(fig)
+
+# %% Spatial representation - Misfit stacking between clusters
+fig, ax = plt.subplots(figsize=(8, 5))
+X_all, Y_all, Z_all = [], [], []
+cluster_stats = []
+n_clusters_total = len(Results_df)
+n_clusters_selected = 0
+
+for cluster_id, row in Results_df.iterrows():
+    x = np.asarray(row["x"], dtype=float).ravel()
+    y = np.asarray(row["y"], dtype=float).ravel()
+    misfit = np.asarray(row["Prob"], dtype=float).ravel()
+    dx = row["dx"]
+    dy = row["dy"]
+    valid = (
+        np.isfinite(x)
+        & np.isfinite(y)
+        & np.isfinite(misfit)
+    )
+    n_total = len(x)
+    n_valid = np.sum(valid)
+    if n_valid == 0:
+        continue
+    # Select lowest misfit percentile
+    misfit_threshold = np.nanpercentile(
+        misfit[valid],
+        100 - percentile
+    )
+    mask = valid & (misfit <= misfit_threshold)
+    if not np.any(mask):
+        continue
+    # Selected positions
+    x_selected = x[mask]
+    y_selected = y[mask]
+    z_selected = misfit[mask]
+    # Snap coordinates to spatial grid
+    x_selected = np.round(x_selected / dx) * dx
+    y_selected = np.round(y_selected / dy) * dy
+    X_all.append(x_selected)
+    Y_all.append(y_selected)
+    Z_all.append(z_selected)
+    n_clusters_selected += 1
+    cluster_stats.append({
+        "cluster": cluster_id,
+        "n_total": n_total,
+        "n_valid": n_valid,
+        "n_selected": np.sum(mask),
+        "misfit_th": misfit_threshold,
+        "misfit_min": np.min(z_selected),
+        "misfit_max": np.max(z_selected),
+    })
+
+X_all = np.concatenate(X_all)
+Y_all = np.concatenate(Y_all)
+Z_all = np.concatenate(Z_all)
+
+df_grid = pd.DataFrame({
+    "x": X_all,
+    "y": Y_all,
+    "z": Z_all
+})
+
+Z_grid = df_grid.pivot_table(
+    index="y",
+    columns="x",
+    values="z",
+    aggfunc="sum"
+)
+
+X = Z_grid.columns.values
+Y = Z_grid.index.values
+
+X_grid, Y_grid = np.meshgrid(X, Y)
+
+Z = Z_grid.values
+
+ax.plot(
+    CSVfile_cable_data["X[m]"],
+    CSVfile_cable_data["Y[m]"],
+    color="black",
+    linestyle="-",
+    linewidth=2,
+    label="DAS cable",
+    zorder=3
+)
+
+contour = ax.contourf(
+    X_grid,
+    Y_grid,
+    Z,
+    levels=20,
+    cmap="viridis",
+    alpha=0.85,
+    zorder=2
+)
+
+cbar = fig.colorbar(contour, ax=ax)
+cbar.set_label(
+    "Cumulative misfit [s]",
+    rotation=270,
+    labelpad=15,
+    fontsize=plot_config.label_size
+)
+cbar.ax.tick_params(
+    labelsize=plot_config.tick_size
+)
+
+# Labels and title
+ax.set_xlabel("X [m]", fontsize=plot_config.label_size)
+ax.set_ylabel("Y [m]", fontsize=plot_config.label_size)
+
+ax.set_title(
+    f"Spatial misfit stacking (P{percentile})",
+    fontsize=plot_config.title_size,
+    fontweight="bold"
+)
+
+ax.set_xlim(np.min(x_filt)-1e3, np.max(x_filt)+1e3)
+ax.set_ylim(np.min(y_filt)-1e3, np.max(y_filt)+1e3)
+
+# Formatting
+ax.tick_params(
+    axis="both",
+    which="major",
+    labelsize=plot_config.tick_size
+)
+
+ax.tick_params(
+    axis="both",
+    which="minor",
+    labelsize=plot_config.tick_size
+)
+
+ax.grid(
+    True,
+    linewidth=plot_config.grid_width,
+    alpha=plot_config.grid_alpha
+)
+
+ax.set_aspect("equal", adjustable="box")
+ax.legend(frameon=True)
+
+plt.tight_layout()
+# Save figure
+fig.savefig(
+    os.path.join(
+        output_results,
+        f"8_NoteLoc_Stacking_P{percentile}.png"
+    ),
+    dpi=150,
+    bbox_inches="tight"
+)
+
+plt.show()
+plt.close(fig)
+
+
+# %%
