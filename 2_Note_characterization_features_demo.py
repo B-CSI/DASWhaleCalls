@@ -1,0 +1,1 @@
+SCRIPT_NAME = "2_Note_characterization_features_demo.py"

@@ -12,13 +12,13 @@ from src.signal_functions import (
     SigFilt_LP,
 )
 
+from config.parameters import *
+plot_config = PlotConfig()
+
 from kvp import KVP
 
-SCRIPT_NAME = "h5reading_KVPapplication.py"
-# %%
-# ============================================================
-# LOAD AND CONCATENATE TWO HDF5 FILES
-# ============================================================
+SCRIPT_NAME = "0_KVP_application_demo.py.py"
+# %% LOAD AND CONCATENATE TWO HDF5 FILES
 file_1 = os.path.join(
     ".",
     "data_example",
@@ -29,7 +29,6 @@ file_2 = os.path.join(
     "data_example",
     "2024_01_13_07h58m34s_HDAS_SAFE_DASWhaleCalls_example.h5",
 )
-
 
 def read_h5(path):
     with h5py.File(path, "r") as f:
@@ -45,14 +44,10 @@ def read_h5(path):
 
     return result
 
-
 h5_1 = read_h5(file_1)
 h5_2 = read_h5(file_2)
 
-# ============================================================
 # VALIDATE METADATA
-# ============================================================
-
 for key in (
     "fs",
     "dx",
@@ -69,21 +64,16 @@ for key in (
 
 if h5_1["data"].shape[0] != h5_2["data"].shape[0]:
     raise ValueError("The H5 files have different channel counts.")
-
 if h5_1["data"].shape[0] != (
     h5_1["channel_end"] - h5_1["channel_start"] + 1
 ):
     raise ValueError("File 1 channel metadata is inconsistent.")
-
 if h5_2["data"].shape[0] != (
     h5_2["channel_end"] - h5_2["channel_start"] + 1
 ):
     raise ValueError("File 2 channel metadata is inconsistent.")
 
-# ============================================================
 # VALIDATE TEMPORAL CONTINUITY
-# ============================================================
-
 fs = h5_1["fs"]
 
 n_samples_1 = h5_1["data"].shape[1]
@@ -107,10 +97,7 @@ if abs(time_error) > tolerance:
         f"Difference:            {time_error:.9f} s"
     )
 
-# ============================================================
 # CONCATENATE ALONG TIME AXIS
-# ============================================================
-
 data = np.concatenate(
     [h5_1["data"], h5_2["data"]],
     axis=1,
@@ -162,18 +149,18 @@ print(
     ).isoformat(),
 )
 
-
-# %%
-# ============================================================
-# PLOT PROCESSED HDF5
-# ============================================================
-
-fig, ax = plt.subplots(
-    figsize=(12, 6)
+# %% REPRESENTING THE DATA
+FigName = "0_DAS_data_raw".replace(" ", "")
+title_str = (
+    datetime.fromtimestamp(
+        unix_time_start,
+        tz=timezone.utc,
+    ).strftime("%Y-%m-%dT%H:%M:%S.%f")[:22] + "Z"
 )
 
+fig, ax = plt.subplots(figsize=(12, 7))
 vmin, vmax = -0.5, 1.0
-
+# Plot strain heatmap
 im = ax.imshow(
     data,
     aspect="auto",
@@ -188,42 +175,58 @@ im = ax.imshow(
         distance[-1] / 1e3,
     ],
 )
-
-ax.set_xlabel("Time [s]")
-ax.set_ylabel("Distance [km]")
-
+# Figure formatting
 ax.set_title(
-    datetime.fromtimestamp(
-        unix_time_start,
-        tz=timezone.utc,
-    ).strftime(
-        "%Y-%m-%dT%H:%M:%S.%f"
-    )[:22] + "Z"
+    title_str,
+    fontsize=plot_config.title_size,
+    fontweight="bold"
 )
-
+ax.set_xlabel(
+    "Time [s]",
+    fontsize=plot_config.label_size
+)
+ax.set_ylabel(
+    "Distance [km]",
+    fontsize=plot_config.label_size
+)
+ax.tick_params(
+    axis="both",
+    which="major",
+    labelsize=plot_config.tick_size
+)
+ax.tick_params(
+    axis="both",
+    which="minor",
+    labelsize=plot_config.tick_size
+)
+ax.grid(
+    True,
+    linewidth=plot_config.grid_width,
+    alpha=plot_config.grid_alpha
+)
+# Colorbar
 cbar = fig.colorbar(
     im,
     ax=ax,
 )
-
 cbar.set_label(
-    "Strain"
+    "Strain",
+    fontsize=plot_config.label_size
 )
-
-plt.tight_layout()
-plt.show()
+cbar.ax.tick_params(
+    labelsize=plot_config.tick_size
+)
+# Save and display figure
+fig.tight_layout()
+fig.savefig(
+    os.path.join(output_results, f"{FigName}.png"),
+    dpi=300,
+    bbox_inches="tight",
+)
+# plt.show()
 plt.close(fig)
 
-
-# %%
-# ============================================================
-# KVP CONFIGURATION
-# ============================================================
-
-fmin_filt = 19.0
-fmax_filt = 23.0
-nfilt = 6
-
+# %% KVP CONFIGURATION
 # # Ricker:
 # freqmax = 20.0
 # octaves = 3
@@ -234,17 +237,20 @@ nfilt = 6
 # mingap = 3.0
 # nbands = 4
 
-# # Morlet (https://meetingorganizer.copernicus.org/GC14-FibreOptic/GC14-FibreOptic-63.html):
-freqmax = 25.0
-octaves = 1
-voices = 10
-cf_cycles = 150.0
-jmp_cycles = 2.0
-jump = 2.0
-mingap = 1.0
-nbands = 2
-w0 = 2*5.3364
-wavelet = 'morlet'
+# # Morlet:
+# Latorre, H., et al. (2026). Adapting a multiscale phase picking 
+# algorithm to detect whale songs in marine environments. 
+# Copernicus GmbH. https://doi.org/10.5194/egusphere-gc14-fibreoptic-63
+# freqmax = 25.0
+# octaves = 1
+# voices = 10
+# cf_cycles = 150.0
+# jmp_cycles = 2.0
+# jump = 2.0
+# mingap = 1.0
+# nbands = 2
+# w0 = 2*5.3364
+# wavelet = 'morlet'
 
 kvp_picker = KVP(
     freqmax=freqmax,
@@ -259,82 +265,41 @@ kvp_picker = KVP(
     wavelet=wavelet,
 )
 
-
-# %%
-# ============================================================
-# TEST SINGLE CHANNEL
-# ============================================================
-
+# %% TEST SINGLE CHANNEL
 channel = 750
+signal = data[channel,:].astype(np.float64)
 
-signal = data[
-    channel,
-    :
-].astype(
-    np.float64
-)
-
-
-# %%
 # FILTER SINGLE CHANNEL
-# ============================================================
+signal = SigFilt_HP(signal,fs,nfilt,fmin_filt)
+signal = SigFilt_LP(signal,fs,nfilt,fmax_filt)
 
-signal = SigFilt_HP(
-    signal,
-    fs,
-    nfilt,
-    fmin_filt,
-)
-
-signal = SigFilt_LP(
-    signal,
-    fs,
-    nfilt,
-    fmax_filt,
-)
-
-
-# %%
 # PLOT FILTERED CHANNEL
-# ============================================================
-
-fig, ax = plt.subplots(
-    figsize=(12, 4)
-)
-
-ax.plot(
-    time,
-    signal,
-    linewidth=0.8,
-)
-
-ax.set_xlabel(
-    "Time [s]"
-)
-
-ax.set_ylabel(
-    "Strain"
-)
-
+fig, ax = plt.subplots(figsize=(12, 7))
+ax.plot(time,signal,linewidth=0.8)
+ax.set_xlabel("Time [s]",fontsize=plot_config.label_size)
+ax.set_ylabel("Strain",fontsize=plot_config.label_size)
 ax.set_title(
     f"DAS channel {channel} — "
-    f"{distance[channel] / 1e3:.2f} km"
+    f"{distance[channel] / 1e3:.2f} km",
+    fontsize=plot_config.title_size,
+    fontweight="bold"
 )
-
+ax.tick_params(
+    axis="both",
+    which="both",
+    labelsize=plot_config.tick_size
+)
 ax.grid(
     True,
-    alpha=0.3,
+    linewidth=plot_config.grid_width,
+    alpha=plot_config.grid_alpha
 )
-
-plt.tight_layout()
+fig.tight_layout()
 plt.show()
 plt.close(fig)
 
-# %%
-# ============================================================
-# RUN KVP ON ONE SIGNAL
-# ============================================================
-
+# %% RUN KVP FUNCTIONS:
+# ON ONE SIGNAL:
 def run_kvp_signal(
     signal,
     fs,
@@ -364,12 +329,7 @@ def run_kvp_signal(
         tr
     )
 
-
-# %%
-# ============================================================
-# RUN KVP OVER ALL DAS CHANNELS
-# ============================================================
-
+# OVER ALL DAS CHANNELS
 def run_kvp_das(
     data,
     fs,
@@ -465,11 +425,7 @@ def run_kvp_das(
         ],
     )
 
-# %%
-# ============================================================
-# RUN KVP
-# ============================================================
-
+# %% RUN KVP
 df_picks = run_kvp_das(
     data=data,
     fs=fs,
@@ -504,15 +460,18 @@ else:
     print("KVP DID NOT RETURN ANY PICKS.")
 
 
-# %%
-# ============================================================
-# PLOT KVP PICKS
-# ============================================================
+# %% PLOT KVP PICKS
+FigName = "0_DAS_data_with_picks"
 
-fig, ax = plt.subplots(
-    figsize=(12, 6)
+title_str = (
+    datetime.fromtimestamp(
+        unix_time_start,
+        tz=timezone.utc,
+    ).strftime("%Y-%m-%dT%H:%M:%S.%f")[:22] + "Z"
 )
 
+fig, ax = plt.subplots(figsize=(12,7))
+# DAS strain heatmap
 im = ax.imshow(
     data,
     aspect="auto",
@@ -527,7 +486,7 @@ im = ax.imshow(
         distance[-1] / 1e3,
     ],
 )
-
+# KVP picks
 ax.scatter(
     df_picks["time_rel"],
     df_picks["Distance_km"],
@@ -537,66 +496,62 @@ ax.scatter(
     label="KVP picks",
     zorder=3,
 )
-
-ax.set_xlabel(
-    "Time [s]"
-)
-
-ax.set_ylabel(
-    "Distance [km]"
-)
-
+# Figure formatting
 ax.set_title(
-    datetime.fromtimestamp(
-        unix_time_start,
-        tz=timezone.utc,
-    ).strftime(
-        "%Y-%m-%dT%H:%M:%S.%f"
-    )[:22] + "Z"
+    title_str,
+    fontsize=plot_config.title_size,
+    fontweight="bold"
 )
-
+ax.set_xlabel(
+    "Time [s]",
+    fontsize=plot_config.label_size
+)
+ax.set_ylabel(
+    "Distance [km]",
+    fontsize=plot_config.label_size
+)
+ax.tick_params(
+    axis="both",
+    which="both",
+    labelsize=plot_config.tick_size
+)
+ax.grid(
+    True,
+    linewidth=plot_config.grid_width,
+    alpha=plot_config.grid_alpha
+)
+# Colorbar
 cbar = fig.colorbar(
     im,
     ax=ax,
 )
-
 cbar.set_label(
-    "Strain"
+    "Strain",
+    fontsize=plot_config.label_size
 )
-
-ax.legend()
-
-plt.tight_layout()
+cbar.ax.tick_params(
+    labelsize=plot_config.tick_size
+)
+# Legend
+ax.legend(
+    fontsize=plot_config.legend_size
+)
+fig.tight_layout()
+fig.savefig(
+    os.path.join(output_results, f"{FigName}.png"),
+    dpi=300,
+    bbox_inches="tight",
+)
 plt.show()
 plt.close(fig)
 
+# %% FINAL KVP PICKS
+# print("\n=== FINAL KVP PICKS ===")
+# print(df_picks)
+# print("\nColumns:")
+# print(df_picks.columns)
 
-# %%
-# ============================================================
-# FINAL KVP PICKS
-# ============================================================
-print(
-    "\n=== FINAL KVP PICKS ==="
-)
-
-print(
-    df_picks
-)
-
-print(
-    "\nColumns:"
-)
-
-print(
-    df_picks.columns
-)
-
-
-# %%
-# ============================================================
-# SAVE CSV IN THE SAME DIRECTORY AS THE HDF5
-# ============================================================
-
+# %% SAVE CSV IN THE SAME DIRECTORY AS THE HDF5
 # Output filename
 output_filename = (
     os.path.splitext(os.path.basename(file_1))[0]
@@ -611,11 +566,7 @@ print(
     f"{output_file}"
 )
 
-# %%
-# ============================================================
-# SAVE CSV WITH METADATA
-# ============================================================
-
+# %% SAVE CSV WITH METADATA
 creation_date = datetime.now().strftime(
     "%Y-%m-%d %H:%M:%S"
 )
@@ -626,10 +577,7 @@ with open(
     encoding="utf-8",
 ) as f:
 
-    # ========================================================
-    # File information
-    # ========================================================
-
+    # File information:
     f.write(
         "# KVP PROCESSING METADATA\n"
     )
@@ -650,10 +598,7 @@ with open(
         "#\n"
     )
 
-    # ========================================================
-    # Acquisition metadata
-    # ========================================================
-
+    # Acquisition metadata:
     f.write(
         "# HDF5 ACQUISITION PARAMETERS\n"
     )
@@ -697,10 +642,7 @@ with open(
         "#\n"
     )
 
-    # ========================================================
-    # Spatial selection
-    # ========================================================
-
+    # Spatial selection:
     f.write(
         "# SPATIAL CHANNEL SELECTION\n"
     )
@@ -729,10 +671,7 @@ with open(
         "#\n"
     )
 
-    # ========================================================
-    # Temporal selection
-    # ========================================================
-
+    # Temporal selection:
     f.write(
         "# TEMPORAL ANALYSIS WINDOW\n"
     )
@@ -745,10 +684,7 @@ with open(
         "#\n"
     )
 
-    # ========================================================
-    # KVP parameters
-    # ========================================================
-
+    # KVP parameters:
     f.write(
         "# KVP PICKER PARAMETERS\n"
     )
@@ -841,11 +777,7 @@ print(
 )
 
 
-# %%
-# ============================================================
-# OUTPUT
-# ============================================================
-
+# %% OUTPUT
 print(
     "\n========================================"
 )

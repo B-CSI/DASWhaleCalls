@@ -10,8 +10,9 @@ import pandas as pd
 from datetime import datetime
 
 from config.parameters import *
+plot_config = PlotConfig()
 
-SCRIPT_NAME = "KVP_clustering_fitting_demo.py"
+SCRIPT_NAME = "1_KVP_clustering_fitting_demo.py"
 # %% Load KVP picks
 csv_path = os.path.join(".","data_example","2024_01_13_07h57m44s_HDAS_SAFE_DASWhaleCalls_example.csv")
 CSVfile_raw_data = pd.read_csv(csv_path,sep=";",comment="#")
@@ -22,7 +23,6 @@ print(f"Columns: {CSVfile_raw_data.columns.tolist()}")
 print(CSVfile_raw_data.head())
 
 # %% Representing the inut data (KVP picks):
-plot_config = PlotConfig()
 FigName = "0_KVPpicks_raw"
 title_str = "KVP picks raw\n"
 fig, ax = plt.subplots(figsize=(12, 7))

@@ -9,13 +9,13 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from tqdm import tqdm
 from config.parameters import *
+plot_config = PlotConfig()
 
 import matplotlib.dates as mdates
 from matplotlib.ticker import FuncFormatter
 import datetime as dt
 
-SCRIPT_NAME = "Note_localization_demo.py"
-plot_config = PlotConfig()
+SCRIPT_NAME = "3_Note_localization_demo.py"
 # %% Load KVP picks
 csv_path = os.path.join(".","data_example","2024_01_13_07h57m44s_HDAS_SAFE_DASWhaleCalls_example_selectedKVPpicks.csv")
 KVP_selected_picks = pd.read_csv(csv_path,sep=";",comment="#")
@@ -749,161 +749,3 @@ fig.savefig(
 )
 plt.show()
 plt.close(fig)
-
-# %% Spatial representation - Misfit stacking between clusters
-fig, ax = plt.subplots(figsize=(8, 5))
-X_all, Y_all, Z_all = [], [], []
-cluster_stats = []
-n_clusters_total = len(Results_df)
-n_clusters_selected = 0
-
-for cluster_id, row in Results_df.iterrows():
-    x = np.asarray(row["x"], dtype=float).ravel()
-    y = np.asarray(row["y"], dtype=float).ravel()
-    misfit = np.asarray(row["Prob"], dtype=float).ravel()
-    dx = row["dx"]
-    dy = row["dy"]
-    valid = (
-        np.isfinite(x)
-        & np.isfinite(y)
-        & np.isfinite(misfit)
-    )
-    n_total = len(x)
-    n_valid = np.sum(valid)
-    if n_valid == 0:
-        continue
-    # Select lowest misfit percentile
-    misfit_threshold = np.nanpercentile(
-        misfit[valid],
-        100 - percentile
-    )
-    mask = valid & (misfit <= misfit_threshold)
-    if not np.any(mask):
-        continue
-    # Selected positions
-    x_selected = x[mask]
-    y_selected = y[mask]
-    z_selected = misfit[mask]
-    # Snap coordinates to spatial grid
-    x_selected = np.round(x_selected / dx) * dx
-    y_selected = np.round(y_selected / dy) * dy
-    X_all.append(x_selected)
-    Y_all.append(y_selected)
-    Z_all.append(z_selected)
-    n_clusters_selected += 1
-    cluster_stats.append({
-        "cluster": cluster_id,
-        "n_total": n_total,
-        "n_valid": n_valid,
-        "n_selected": np.sum(mask),
-        "misfit_th": misfit_threshold,
-        "misfit_min": np.min(z_selected),
-        "misfit_max": np.max(z_selected),
-    })
-
-X_all = np.concatenate(X_all)
-Y_all = np.concatenate(Y_all)
-Z_all = np.concatenate(Z_all)
-
-df_grid = pd.DataFrame({
-    "x": X_all,
-    "y": Y_all,
-    "z": Z_all
-})
-
-Z_grid = df_grid.pivot_table(
-    index="y",
-    columns="x",
-    values="z",
-    aggfunc="sum"
-)
-
-X = Z_grid.columns.values
-Y = Z_grid.index.values
-
-X_grid, Y_grid = np.meshgrid(X, Y)
-
-Z = Z_grid.values
-
-ax.plot(
-    CSVfile_cable_data["X[m]"],
-    CSVfile_cable_data["Y[m]"],
-    color="black",
-    linestyle="-",
-    linewidth=2,
-    label="DAS cable",
-    zorder=3
-)
-
-contour = ax.contourf(
-    X_grid,
-    Y_grid,
-    Z,
-    levels=20,
-    cmap="viridis",
-    alpha=0.85,
-    zorder=2
-)
-
-cbar = fig.colorbar(contour, ax=ax)
-cbar.set_label(
-    "Cumulative misfit [s]",
-    rotation=270,
-    labelpad=15,
-    fontsize=plot_config.label_size
-)
-cbar.ax.tick_params(
-    labelsize=plot_config.tick_size
-)
-
-# Labels and title
-ax.set_xlabel("X [m]", fontsize=plot_config.label_size)
-ax.set_ylabel("Y [m]", fontsize=plot_config.label_size)
-
-ax.set_title(
-    f"Spatial misfit stacking (P{percentile})",
-    fontsize=plot_config.title_size,
-    fontweight="bold"
-)
-
-ax.set_xlim(np.min(x_filt)-1e3, np.max(x_filt)+1e3)
-ax.set_ylim(np.min(y_filt)-1e3, np.max(y_filt)+1e3)
-
-# Formatting
-ax.tick_params(
-    axis="both",
-    which="major",
-    labelsize=plot_config.tick_size
-)
-
-ax.tick_params(
-    axis="both",
-    which="minor",
-    labelsize=plot_config.tick_size
-)
-
-ax.grid(
-    True,
-    linewidth=plot_config.grid_width,
-    alpha=plot_config.grid_alpha
-)
-
-ax.set_aspect("equal", adjustable="box")
-ax.legend(frameon=True)
-
-plt.tight_layout()
-# Save figure
-fig.savefig(
-    os.path.join(
-        output_results,
-        f"8_NoteLoc_Stacking_P{percentile}.png"
-    ),
-    dpi=150,
-    bbox_inches="tight"
-)
-
-plt.show()
-plt.close(fig)
-
-
-# %%
