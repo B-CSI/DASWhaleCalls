@@ -16,14 +16,14 @@ These changes concern the implementation and presentation of the example workflo
 
 The following scripts have been reviewed and finalized:
 
-- h5reading_KVPapplication.py
-- KVP_clustering_fitting_demo.py
+- 0_KVP_application_demo.py
+- 1_KVP_clustering_fitting_demo.py
+- 3_Note_localization_demo.py
 
 The remaining components are still under development:
 
-- Note_localization_demo.py: Currently based on the version used in the arXiv paper. The implementation needs to be reviewed and updated.
-- Note_characterization_features_demo.py: Still under development and not yet finalized for the public repository.
-- DASWhaleCalls_example.ipynb: The notebook will be finalized once the two scripts above have been completed and updated.
+- 2_Note_characterization_features_demo.py: Still under development and not yet finalized for the public repository.
+- DASWhaleCalls_example.ipynb: The notebook will be finalized once the script above has been completed and updated.
 
 The repository will be progressively updated as the remaining scripts and the example workflow are reviewed and finalized.
 
