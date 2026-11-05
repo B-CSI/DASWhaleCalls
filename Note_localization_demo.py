@@ -2,6 +2,7 @@
 # Standard library
 import os
 import numpy as np 
+import ast
 
 # Third-party libraries
 import matplotlib.pyplot as plt
@@ -443,108 +444,214 @@ for idx, (cluster, KVPpicks_cluster) in enumerate(tqdm(KVP_selected_picks.groupb
 
 Results_df = pd.DataFrame(Results_df, columns=Results_df_columns)
 
-# %% Spatial representation using probability percentile and time
-percentile = 95  # Probability percentile
+# %% Reading the csv files to (re-)create the Results_df
+base_path = "results/2024_01_13_07h57m44s_HDAS_SAFE_DASWhaleCalls_example_selectedKVPpicks_NoteLoc_cluster"
+dfs = []
+for cluster in range(6):
+    filename = f"{base_path}{cluster}.csv"
+    df = pd.read_csv(
+        filename,
+        sep=';',
+        comment='#'
+    )
+    # Convert string representations of lists into Python lists
+    for col in ['x', 'y', 'Prob']:
+        df[col] = df[col].apply(ast.literal_eval)
+
+    df['Cluster'] = cluster
+    dfs.append(df)
+Results_df = pd.concat(dfs, ignore_index=True)
+
+# %% Spatial representation using misfit percentile
+percentile = 95  # Select the best (100-percentile)% (lowest misfit values)
 
 fig, ax = plt.subplots(figsize=(10, 8))
-# Collect data from all clusters
-x_all = []
-y_all = []
-t_all = []
 
-for _, row in Results_df.iterrows():
-    x = np.asarray(row['x'])
-    y = np.asarray(row['y'])
-    prob = np.asarray(row['Prob'])
+x_all, y_all, t_all, misfit_all, cluster_all = [], [], [], [], []
+cluster_stats = []
 
-    # Time
-    time = row['unixtime']
+n_clusters_total = len(Results_df)
+n_clusters_selected = 0
+for cluster_id, row in Results_df.iterrows():
+    x = np.asarray(row['x'], dtype=float)
+    y = np.asarray(row['y'], dtype=float)
+    misfit = np.asarray(row['Prob'], dtype=float)
 
-    if np.ndim(time) == 0:
-        t = np.full(len(x), float(time))
-    else:
-        t = np.asarray(time)
+    time = float(row['unixtime'])
+    t = np.full(len(x), time)
 
-    # Probability threshold (calculated independently per cluster)
-    prob_threshold = np.nanpercentile(prob, percentile)
-
-    # Filter points
-    mask = (
-        (prob >= prob_threshold)
-        & np.isfinite(prob)
-        & np.isfinite(x)
+    # Valid positions
+    valid = (
+        np.isfinite(x)
         & np.isfinite(y)
+        & np.isfinite(misfit)
         & np.isfinite(t)
     )
+    n_total = len(x)
+    n_valid = np.sum(valid)
+    # Percentile calculated over valid positions
+    misfit_threshold = np.nanpercentile(
+        misfit[valid],
+        100 - percentile,
+    )
+    mask = valid & (misfit <= misfit_threshold)
+    n_selected = np.sum(mask)
+    if n_selected == 0:
+        continue
+    n_clusters_selected += 1
 
     x_all.append(x[mask])
     y_all.append(y[mask])
     t_all.append(t[mask])
+    misfit_all.append(misfit[mask])
+    cluster_all.append(np.full(n_selected, cluster_id))
+    cluster_stats.append({
+        "cluster": cluster_id,
+        "n_total": n_total,
+        "n_valid": n_valid,
+        "n_selected": n_selected,
+        "misfit_th": misfit_threshold,
+        "misfit_min": np.min(misfit[mask]),
+        "misfit_max": np.max(misfit[mask]),
+    })
 
-# Concatenate all clusters
+# Concatenate selected clusters
 x_filt = np.concatenate(x_all)
 y_filt = np.concatenate(y_all)
 t_filt = np.concatenate(t_all)
+misfit_all = np.concatenate(misfit_all)
+cluster_all = np.concatenate(cluster_all)
 
-# Convert time to seconds relative to first selected point
-t_filt = t_filt - np.min(t_filt)
+# Global minimum and maximum
+idx_min = np.argmin(misfit_all)
+idx_max = np.argmax(misfit_all)
 
-# Scatter
+misfit_min_selected = misfit_all[idx_min]
+misfit_max_selected = misfit_all[idx_max]
+
+cluster_min = cluster_all[idx_min]
+cluster_max = cluster_all[idx_max]
+
+# Summary
+n_selected_per_cluster = cluster_stats[0]["n_selected"]
+n_total_per_cluster = cluster_stats[0]["n_valid"]
+
+print("\n" + "="*80)
+print("          DAS SPATIAL REPRESENTATION SUMMARY")
+print("="*80)
+
+print(
+    f"Misfit percentile        : P{percentile} "
+    f"(selected points {n_selected_per_cluster}/{n_total_per_cluster})"
+)
+
+print(f"Total clusters           : {n_clusters_total}")
+
+print(
+    f"Misfit value             : "
+    f"[{misfit_min_selected:.6f}, {misfit_max_selected:.6f}] s "
+    f"([{misfit_min_selected*1000:.3f}, "
+    f"{misfit_max_selected*1000:.3f}] ms) "
+    f"| [Cluster {cluster_min}, Cluster {cluster_max}]"
+)
+
+print("-"*80)
+
+print(
+    f"{'Cluster':>8} "
+    f"{'P threshold':>14} "
+    f"{'Min misfit [s]':>17} "
+    f"{'Max misfit [s]':>17}"
+)
+
+print("-"*80)
+for stat in cluster_stats:
+    print(
+        f"{stat['cluster']:>8} "
+        f"{stat['misfit_th']:>14.6f} "
+        f"{stat['misfit_min']:>17.6f} "
+        f"{stat['misfit_max']:>17.6f}"
+    )
+print("="*80 + "\n")
+
+# Relative time
+t_filt -= np.min(t_filt)
+# Spatial scatter
 sc = ax.scatter(
     x_filt,
     y_filt,
     c=t_filt,
-    cmap='viridis',
+    cmap="viridis",
     s=12,
     alpha=0.8,
-    edgecolors='none',
-    zorder=3
+    edgecolors="none",
+    zorder=3,
 )
-
 # DAS cable
 ax.plot(
     CSVfile_cable_data["X[m]"],
     CSVfile_cable_data["Y[m]"],
-    color='black',
-    linestyle='-',
+    color="black",
+    linestyle="-",
     linewidth=2,
-    label='DAS cable',
-    zorder=2
+    label="DAS cable",
+    zorder=2,
 )
-
 # Colorbar
 cbar = fig.colorbar(sc, ax=ax)
-cbar.set_label(
-    'Time [s]',
-    rotation=270,
-    labelpad=15
-)
 
+cbar.set_label(
+    "Time [s]",
+    rotation=270,
+    labelpad=15,
+    fontsize=plot_config.label_size,
+)
+cbar.ax.tick_params(labelsize=plot_config.tick_size)
 # Labels and title
-ax.set_xlabel('X [m]')
-ax.set_ylabel('Y [m]')
+ax.set_xlabel("X [m]", fontsize=plot_config.label_size)
+ax.set_ylabel("Y [m]", fontsize=plot_config.label_size)
 
 ax.set_title(
-    f'Spatial distribution (Prob >= P{percentile})'
-    # f'\n{len(x_filt)} selected positions'
+    f"Spatial distribution (lowest {100-percentile}% misfit)",
+    fontsize=plot_config.title_size,
+    fontweight="bold",
 )
 
-# Axis limits based only on filtered Results_df positions
-ax.set_xlim(np.min(x_all)-1e3, np.max(x_all)+1e3)
-ax.set_ylim(np.min(y_all)-1e3, np.max(y_all)+1e3)
+# Axis limits
+ax.set_xlim(np.min(x_filt)-1e3, np.max(x_filt)+1e3)
+ax.set_ylim(np.min(y_filt)-1e3, np.max(y_filt)+1e3)
 
-# Grid
+# Formatting
+ax.tick_params(
+    axis="both",
+    which="major",
+    labelsize=plot_config.tick_size,
+)
+
+ax.tick_params(
+    axis="both",
+    which="minor",
+    labelsize=plot_config.tick_size,
+)
+
 ax.grid(
     True,
-    linestyle='--',
-    alpha=0.4
+    linewidth=plot_config.grid_width,
+    alpha=plot_config.grid_alpha,
 )
 
-# Equal axis
-# ax.set_aspect('equal', adjustable='box')
-
-# Legend
+# ax.set_aspect("equal", adjustable="box")
 ax.legend(frameon=True)
 
 plt.tight_layout()
-# plt.show()
+# Save figure
+fig.savefig(
+    os.path.join(
+        output_results,
+        f"7_NoteLoc_P{percentile}.png",
+    ),
+    dpi=150,
+    bbox_inches="tight",
+)
+plt.show()
+plt.close(fig)
