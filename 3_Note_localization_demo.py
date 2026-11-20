@@ -42,61 +42,95 @@ print(
 
 
 # %% Cable coordinates:
-CSVfile_cable = "data_test/cable_geometry.csv"
+CSVfile_cable = "data_example/cable_geometry.csv"
 CSVfile_cable_data = pd.read_csv(CSVfile_cable, sep=";", comment="#") 
 
 dist_cable = CSVfile_cable_data["Channel"].values * dist_ch
 
-# fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-
-# # ------------------------------------------------------------------
-# # Cable geometry in the local Cartesian reference system
-# # ------------------------------------------------------------------
-# axes[0].plot(
-#     CSVfile_cable_data["X[m]"],
-#     CSVfile_cable_data["Y[m]"],
-#     "-k",
-#     linewidth=1.5,
-# )
-# axes[0].scatter(
-#     CSVfile_cable_data["X[m]"],
-#     CSVfile_cable_data["Y[m]"],
+# # Figure: Cable geometry and elevation profile
+# fig, axes = plt.subplots(1,2,figsize=(12, 5))
+# # AXIS 1: Cable geometry in the local Cartesian reference system
+# ax = axes[0]
+# ax.scatter(
+#     CSVfile_cable_data["X[m]"]*1e-3,
+#     CSVfile_cable_data["Y[m]"]*1e-3,
 #     s=8,
-#     c="tab:blue",
+#     color="black",
+#     zorder=3,
 # )
-# axes[0].set_xlabel("X [m]", fontsize=LABEL_SIZE)
-# axes[0].set_ylabel("Y [m]", fontsize=LABEL_SIZE)
-# axes[0].set_title("Cable geometry", fontsize=TITLE_SIZE)
-# axes[0].set_aspect("equal")
-# axes[0].grid(True, linewidth=0.3, alpha=0.4)
-
-# # ------------------------------------------------------------------
-# # Elevation profile
-# # ------------------------------------------------------------------
-# axes[1].plot(
-#     CSVfile_cable_data["Channel"],
-#     CSVfile_cable_data["Z[m]"],
-#     "-k",
-#     linewidth=1.5,
+# ax.set_xlabel(
+#     "X [km]",
+#     fontsize=plot_config.label_size,
 # )
-# axes[1].scatter(
+# ax.set_ylabel(
+#     "Y [km]",
+#     fontsize=plot_config.label_size,
+# )
+# ax.set_title(
+#     "Cable geometry",
+#     fontsize=plot_config.title_size,
+#     fontweight="bold",
+# )
+# ax.set_aspect("equal", adjustable="datalim")
+# # AXIS 2: Cable elevation profile
+# ax = axes[1]
+# ax.scatter(
 #     CSVfile_cable_data["Channel"],
 #     CSVfile_cable_data["Z[m]"],
 #     s=8,
-#     c="tab:blue",
+#     color="black",
+#     zorder=3,
 # )
-# axes[1].set_xlabel("Channel", fontsize=LABEL_SIZE)
-# axes[1].set_ylabel("Z [m]", fontsize=LABEL_SIZE)
-# axes[1].set_title("Cable elevation", fontsize=TITLE_SIZE)
-# axes[1].grid(True, linewidth=0.3, alpha=0.4)
-
+# ax.set_xlabel(
+#     "Channel",
+#     fontsize=plot_config.label_size,
+# )
+# ax.set_ylabel(
+#     "Z [m]",
+#     fontsize=plot_config.label_size,
+# )
+# ax.set_title(
+#     "Cable elevation",
+#     fontsize=plot_config.title_size,
+#     fontweight="bold",
+# )
+# # COMMON FORMATTING
 # for ax in axes:
+#     ax.tick_params(
+#         axis="both",
+#         which="major",
+#         labelsize=plot_config.tick_size,
+#     )
+#     ax.tick_params(
+#         axis="both",
+#         which="minor",
+#         labelsize=plot_config.tick_size,
+#     )
+#     ax.grid(
+#         True,
+#         linewidth=1,
+#         alpha=plot_config.grid_alpha,
+#     )
+#     # Remove top and right spines
 #     ax.spines["top"].set_visible(False)
 #     ax.spines["right"].set_visible(False)
-#     ax.tick_params(axis="both", which="major", labelsize=TICK_SIZE)
-
+# fig.suptitle(
+#     "Cable geometry and elevation profile",
+#     fontsize=plot_config.title_size,
+#     fontweight="bold",
+# )
 # fig.tight_layout()
-# plt.show()
+# # # Save figure
+# # fig.savefig(
+# #     os.path.join(
+# #         output_results,
+# #         "Cable_geometry_elevation.png",
+# #     ),
+# #     dpi=150,
+# #     bbox_inches="tight",
+# # )
+# # plt.show()
+# plt.close(fig)
 
 # %% Positioning 
 from matplotlib.colors import LogNorm
