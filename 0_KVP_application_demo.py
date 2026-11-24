@@ -1,4 +1,34 @@
-# %%
+# %% KVP v0.2.0 installation
+
+# Install KVP v0.2.0 from source (macOS):
+# 1. Install GCC: brew install gcc
+# 2. Clone repository: git clone https://github.com/B-CSI/kvp.git
+# 3. Compile C sources (Apple Clang does not support OpenMP):
+#    cd kvp
+#    gcc-16 -o kvp/lib/libkvp-maco.so kvp/src/*.c -O3 -march=native -shared -fPIC -fopenmp
+# 4. Install in the active Python environment:
+#    python -m pip install .
+# 5. Verify installation:
+#    python -c "import kvp; print(kvp.__version__)"
+# 6. Return to the project root and remove the cloned repository:
+#    cd ..
+#    rm -rf kvp/
+
+# Install KVP v0.2.0 from source (Linux):
+# 1. Install GCC: sudo apt install build-essential
+# 2. Clone repository: git clone https://github.com/B-CSI/kvp.git
+# 3. Compile C sources:
+#    cd kvp
+#    make
+# 4. Install in the active Python environment:
+#    python -m pip install .
+# 5. Verify installation:
+#    python -c "import kvp; print(kvp.__version__)"
+# 6. Return to the project root and remove the cloned repository:
+#    cd ..
+#    rm -rf kvp/
+
+# %% Libraries
 import h5py
 import os
 import numpy as np
