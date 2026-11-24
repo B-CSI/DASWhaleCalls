@@ -9,9 +9,9 @@ fs = 100 # [Hz]
 FontSize = 16
 output_results = "./results"    # Output
 # KVP CONFIGURATION [used by 0_KVP_application_demo.py]:
-fmin_filt = 19.0                # Bandpass filtering min [Hz]
-fmax_filt = 23.0                # Bandpass filtering max [Hz]
-nfilt = 6                       # Bandpass filter order
+fmin_filt = 10.0                # Bandpass filtering min [Hz]
+fmax_filt = 40.0                # Bandpass filtering max [Hz]
+nfilt = 4                       # Bandpass filter order
 wavelet = "morlet"              # Wavelet configuration
 freqmax = 25.0                  # Maximum central frequency [Hz]
 octaves = 1                     # Number of frequency octaves
