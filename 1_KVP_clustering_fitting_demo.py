@@ -69,7 +69,7 @@ fig.savefig(
     dpi=300,
     bbox_inches="tight",
 )
-plt.show()
+# plt.show()
 plt.close(fig)
 
 # %% Data for the analysis:
@@ -91,7 +91,7 @@ KVP_raw_picks["y"] = KVP_raw_picks["Channel"] * dist_ch
 from scripts.kvp_clustering_fitting import KVPpicks_noise_filter
 KVP_raw_picks_filt, KVP_noise_picks = KVPpicks_noise_filter(
     KVP_raw_picks,
-    time_window=0.1,     # [s]
+    time_window=0.15,     # [s]
     min_span_m=10000.0,   # [m]
     min_picks=30,
     plotter=True,
@@ -401,7 +401,7 @@ fig.savefig(
     dpi=300,
     bbox_inches="tight",
 )
-plt.show()
+# plt.show()
 plt.close(fig)
 
 # %% Save the CSV with the KVP picks selected:

@@ -22,6 +22,8 @@ jump = 2.0                      # Jump detection threshold
 mingap = 1.0                    # Minimum temporal gap between consecutive 
 nbands = 2                      # Number of frequency bands required for grouping
 w0 = 2 * 5.3364                 # Dimensionless central frequency parameter
+fmin_filt = 16                  # Lower frequency bound of the KVP analysis [Hz]
+fmax_filt = 27                  # Upper frequency bound of the KVP analysis [Hz]
 # DBSCAN PARAMETERS [used by 1_KVP_clustering_fitting_demo.py]
 c_sound = 1500                  # [m/s]
 eps_m = 500                     # [m]

@@ -40,7 +40,13 @@ import pandas as pd
 from src.signal_functions import (
     SigFilt_HP,
     SigFilt_LP,
+    CMremover
 )
+
+from src.kvp_functions import (
+    run_kvp_das,
+)
+
 
 from config.parameters import *
 plot_config = PlotConfig()
@@ -179,6 +185,11 @@ print(
     ).isoformat(),
 )
 
+# %% Filtering the data:
+data = SigFilt_HP(data,fs,nfilt,fmin_filt)
+dadatata_dec = SigFilt_LP(data,fs,nfilt,fmax_filt)
+data, _ = CMremover(data)
+
 # %% REPRESENTING THE DATA
 FigName = "0_DAS_data_raw".replace(" ", "")
 title_str = (
@@ -189,7 +200,7 @@ title_str = (
 )
 
 fig, ax = plt.subplots(figsize=(12, 7))
-vmin, vmax = -0.5, 1.0
+vmin, vmax = -0.5, 1
 # Plot strain heatmap
 im = ax.imshow(
     data,
@@ -296,164 +307,37 @@ kvp_picker = KVP(
 )
 
 # %% TEST SINGLE CHANNEL
-channel = 750
-signal = data[channel,:].astype(np.float64)
+# channel = 750
+# signal = data[channel,:].astype(np.float64)
 
-# FILTER SINGLE CHANNEL
-signal = SigFilt_HP(signal,fs,nfilt,fmin_filt)
-signal = SigFilt_LP(signal,fs,nfilt,fmax_filt)
+# # FILTER SINGLE CHANNEL
+# signal = SigFilt_HP(signal,fs,nfilt,fmin_filt)
+# signal = SigFilt_LP(signal,fs,nfilt,fmax_filt)
 
-# PLOT FILTERED CHANNEL
-fig, ax = plt.subplots(figsize=(12, 7))
-ax.plot(time,signal,linewidth=0.8)
-ax.set_xlabel("Time [s]",fontsize=plot_config.label_size)
-ax.set_ylabel("Strain",fontsize=plot_config.label_size)
-ax.set_title(
-    f"DAS channel {channel} — "
-    f"{distance[channel] / 1e3:.2f} km",
-    fontsize=plot_config.title_size,
-    fontweight="bold"
-)
-ax.tick_params(
-    axis="both",
-    which="both",
-    labelsize=plot_config.tick_size
-)
-ax.grid(
-    True,
-    linewidth=plot_config.grid_width,
-    alpha=plot_config.grid_alpha
-)
-fig.tight_layout()
-plt.show()
-plt.close(fig)
-
-# %% RUN KVP FUNCTIONS:
-# ON ONE SIGNAL:
-def run_kvp_signal(
-    signal,
-    fs,
-    starttime,
-    channel,
-    kvp_picker,
-):
-
-    tr = Trace(
-        data=np.asarray(
-            signal,
-            dtype=np.float64,
-        )
-    )
-
-    tr.stats.sampling_rate = fs
-
-    tr.stats.starttime = UTCDateTime(
-        starttime
-    )
-
-    tr.stats.channel = (
-        f"CH{channel}"
-    )
-
-    return kvp_picker.obspy(
-        tr
-    )
-
-# OVER ALL DAS CHANNELS
-def run_kvp_das(
-    data,
-    fs,
-    distance,
-    unix_time_start,
-    array_indices,
-    channel_indices,
-    kvp_picker,
-    fmin_filt,
-    fmax_filt,
-    nfilt,
-):
-
-    rows = []
-
-    duration_original = data.shape[1] / fs
-    n_channels_to_process = len(array_indices)
-
-    for i, (array_index, channel) in enumerate(
-        zip(array_indices, channel_indices),
-        start=1,
-    ):
-
-        signal = data[array_index, :].astype(np.float64)
-
-        # Filter the complete concatenated signal
-        # signal, _ = CMremover(signal)
-
-        # Filter the complete concatenated signal
-        signal = SigFilt_HP(
-            signal, fs, nfilt, fmin_filt
-        )
-
-        signal = SigFilt_LP(
-            signal, fs, nfilt, fmax_filt
-        )
-
-        # Run KVP using real data only
-        try:
-            output = run_kvp_signal(
-                signal=signal,
-                fs=fs,
-                starttime=unix_time_start,
-                channel=channel,
-                kvp_picker=kvp_picker,
-            )
-
-        except Exception as e:
-            print(f"KVP failed on channel {channel}: {e}")
-            continue
-
-        if output is None or len(output) == 0:
-            continue
-
-        for pick in output:
-
-            if not np.any(
-                pick.singlepicks["idx_ref"] >= 0
-            ):
-                continue
-
-            time_rel = float(pick.onset(posix=False))
-
-            # Keep picks inside the concatenated interval
-            if not (0 <= time_rel < duration_original):
-                continue
-
-            rows.append({
-                "Channel": int(channel),
-                "Distance_km": float(distance[array_index] / 1e3),
-                "Number_bands": int(pick.nb),
-                "Lowest_band": float(pick.centralfreqs[0]),
-                "Highest_band": float(pick.centralfreqs[-1]),
-                "time_rel": time_rel,
-                "unix_time": float(unix_time_start + time_rel),
-            })
-        if i % 250 == 0 or i == n_channels_to_process:
-            print(
-                f"Processed {i}/{n_channels_to_process} "
-                f"channels (original {channel})"
-            )
-
-    return pd.DataFrame(
-        rows,
-        columns=[
-            "Channel",
-            "Distance_km",
-            "Number_bands",
-            "Lowest_band",
-            "Highest_band",
-            "time_rel",
-            "unix_time",
-        ],
-    )
+# # PLOT FILTERED CHANNEL
+# fig, ax = plt.subplots(figsize=(12, 7))
+# ax.plot(time,signal,linewidth=0.8)
+# ax.set_xlabel("Time [s]",fontsize=plot_config.label_size)
+# ax.set_ylabel("Strain",fontsize=plot_config.label_size)
+# ax.set_title(
+#     f"DAS channel {channel} — "
+#     f"{distance[channel] / 1e3:.2f} km",
+#     fontsize=plot_config.title_size,
+#     fontweight="bold"
+# )
+# ax.tick_params(
+#     axis="both",
+#     which="both",
+#     labelsize=plot_config.tick_size
+# )
+# ax.grid(
+#     True,
+#     linewidth=plot_config.grid_width,
+#     alpha=plot_config.grid_alpha
+# )
+# fig.tight_layout()
+# plt.show()
+# plt.close(fig)
 
 # %% RUN KVP
 df_picks = run_kvp_das(
@@ -464,10 +348,13 @@ df_picks = run_kvp_das(
     array_indices=array_indices,
     channel_indices=channel_indices,
     kvp_picker=kvp_picker,
-    fmin_filt=fmin_filt,
-    fmax_filt=fmax_filt,
-    nfilt=nfilt,
 )
+# Reccomended selection: 
+df_picks = df_picks[
+    # (df_picks["Number_bands"] <= 3) &
+    (df_picks["Lowest_band"] >= fmin_filt) &
+    (df_picks["Highest_band"] <= fmax_filt)
+]
 
 print("\n=== KVP DEBUG ===")
 print("Concatenated HDF5 shape:", data.shape)
@@ -489,6 +376,10 @@ if not df_picks.empty:
 else:
     print("KVP DID NOT RETURN ANY PICKS.")
 
+# print("\n=== FINAL KVP PICKS ===")
+# print(df_picks.head)
+# print("\nColumns:")
+# print(df_picks.columns)
 
 # %% PLOT KVP PICKS
 FigName = "0_DAS_data_with_picks"
@@ -523,7 +414,7 @@ ax.scatter(
     s=12,
     c="red",
     edgecolors="none",
-    label="KVP picks",
+    label=f"{len(df_picks)} KVP picks",
     zorder=3,
 )
 # Figure formatting
@@ -564,6 +455,7 @@ cbar.ax.tick_params(
 )
 # Legend
 ax.legend(
+    loc="upper left",
     fontsize=plot_config.legend_size
 )
 fig.tight_layout()
@@ -572,14 +464,8 @@ fig.savefig(
     dpi=300,
     bbox_inches="tight",
 )
-plt.show()
+# plt.show()
 plt.close(fig)
-
-# %% FINAL KVP PICKS
-# print("\n=== FINAL KVP PICKS ===")
-# print(df_picks)
-# print("\nColumns:")
-# print(df_picks.columns)
 
 # %% SAVE CSV IN THE SAME DIRECTORY AS THE HDF5
 # Output filename

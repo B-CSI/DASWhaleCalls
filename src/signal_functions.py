@@ -4,6 +4,17 @@ import matplotlib.pyplot as plt
 import scipy as scp
 from matplotlib import mlab
 
+# %% CMremover function:
+def CMremover(data):
+    # Seleccionar canales para no tener encuenta
+    nchan, nsamp = data.shape
+    cm = np.nanmedian(data[: :], axis=0)
+    denom = np.dot(cm, cm)
+    numer = np.dot(data, cm)
+    alphas = numer / denom
+    das_corr = data - alphas[:, None] * cm
+    return das_corr, alphas
+
 # %% Spectrogram_analysis_nfft function:
 def spectrogram_analysis_nfft(signal,fs,NFFT,overlap,plotter=False):
     '''
